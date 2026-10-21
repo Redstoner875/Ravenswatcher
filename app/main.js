@@ -28,7 +28,7 @@ const { Worker } = require('worker_threads');
 const { createSidecar } = require('./sidecar');
 const { createLifecycle } = require('./lifecycle');
 const { CACHE_DIR_NAME } = require('./assets/build');
-const { checkForUpdate } = require('./update');
+const { checkForUpdate, createUpdateController } = require('./update');
 const { RunSharer } = require('./share');
 const { HISTORY_FILE, loadHistory, appendRun, deleteRuns, clearHistory, HistoryDeletion } = require('./history');
 
@@ -133,6 +133,22 @@ let rendererReady = false;
 // through pendingSends would be gone after a reload (Ctrl+R stays bound by
 // the default menu). Sent when the check lands and on every page load.
 let updateInfo = null;
+let updateController = null;
+let installingUpdate = false;
+
+ipcMain.handle('readout:update-check', async event => {
+  if (!historyRequest(event, () => ({})).ok) return { ok: false };
+  if (updateController) await updateController.check();
+  else {
+    updateInfo = { ...await checkForUpdate(net.fetch, app.getVersion()), automatic: false, portable: app.isPackaged };
+    sendUpdate();
+  }
+  return { ok: true };
+});
+ipcMain.handle('readout:update-install', async event => {
+  if (!historyRequest(event, () => ({})).ok || !updateController) return { ok: false };
+  return updateController.install();
+});
 
 // SQLite run history, loaded at startup; each
 // complete capture is committed under its ID as a run finishes.
@@ -348,7 +364,7 @@ if (!gotLock) {
     },
   });
   app.on('second-instance', () => lifecycle.secondInstance());
-  app.on('before-quit', event => { void lifecycle.beforeQuit(event); });
+  app.on('before-quit', event => { if (!installingUpdate) void lifecycle.beforeQuit(event); });
 
   app.whenReady().then(() => {
     CACHE_DIR = path.join(app.getPath('userData'), CACHE_DIR_NAME);
@@ -366,11 +382,23 @@ if (!gotLock) {
     });
     // One check per launch. A failed check is one log line here and a blank
     // note on the page, never an error.
-    checkForUpdate(net.fetch, app.getVersion()).then((info) => {
-      if (!info.ok) console.log(`[main] update check failed: ${info.reason}`);
-      updateInfo = info;
-      sendUpdate();
-    });
+    const installed = app.isPackaged && process.platform === 'win32'
+      && fs.existsSync(path.join(path.dirname(app.getPath('exe')), 'Uninstall Ravenswatcher.exe'));
+    if (installed) {
+      const { autoUpdater } = require('electron-updater');
+      updateController = createUpdateController({
+        updater: autoUpdater, current: app.getVersion(),
+        onState: info => { updateInfo = info; sendUpdate(); },
+        beforeInstall: async () => { await sidecar.stop(); installingUpdate = true; },
+      });
+      void updateController.check();
+      setInterval(() => { void updateController.check(); }, 4 * 60 * 60 * 1000).unref();
+    } else {
+      checkForUpdate(net.fetch, app.getVersion()).then(info => {
+        updateInfo = { ...info, automatic: false, portable: app.isPackaged };
+        sendUpdate();
+      });
+    }
   });
 
   app.on('window-all-closed', () => app.quit());

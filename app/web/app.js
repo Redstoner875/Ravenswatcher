@@ -266,10 +266,55 @@ function applyUpdate(info) {
   el("update-text").textContent = latest ? "Ravenswatcher " + latest + " is available." : "";
   const barLink = el("update-download");
   if (latest && url) barLink.href = url; else barLink.removeAttribute("href");
+  const automatic = info?.automatic === true;
+  const ready = automatic && info.status === "downloaded";
+  const busy = automatic && ["checking", "downloading", "installing"].includes(info.status);
+  el("update-install").hidden = !ready;
+  el("version-install").hidden = !ready;
+  el("version-check").disabled = busy;
+  barLink.hidden = automatic && info.status !== "error";
+  rowLink.hidden = !latest || !url || automatic && info.status !== "error";
+  barLink.textContent = info?.automatic === false ? "Install for auto-updates" : "Download";
+  rowLink.textContent = barLink.textContent;
+  if (info?.portable) {
+    rowLink.href = url || "https://github.com/Redstoner875/Ravenswatcher/releases";
+    rowLink.hidden = false;
+    note.textContent = "Portable copy. Install once to enable automatic updates.";
+  }
+  if (automatic) {
+    if (info.status === "checking") note.textContent = "Checking for updates…";
+    if (info.status === "downloading") {
+      const progress = Math.round(info.percent || 0) + "%";
+      note.textContent = "Downloading update: " + progress;
+      el("update-text").textContent = "Downloading Ravenswatcher " + latest + " — " + progress;
+    }
+    if (ready) {
+      note.textContent = "Update downloaded. Restart when you're ready.";
+      el("update-text").textContent = "Ravenswatcher " + latest + " is ready to install.";
+    }
+    if (info.status === "installing") {
+      note.textContent = "Restarting to install update…";
+      el("update-text").textContent = note.textContent;
+    }
+    if (info.status === "error") note.textContent = "Update failed. Check your connection and try again.";
+  }
   showUpdateBar();
 }
 
 function initUpdateBar() {
+  const install = async () => {
+    el("update-install").disabled = true;
+    el("version-install").disabled = true;
+    try { await window.ravenswatch?.installUpdate?.(); }
+    finally { el("update-install").disabled = false; el("version-install").disabled = false; }
+  };
+  el("update-install").addEventListener("click", install);
+  el("version-install").addEventListener("click", install);
+  el("version-check").addEventListener("click", async () => {
+    el("version-check").disabled = true;
+    try { await window.ravenswatch?.checkForUpdates?.(); }
+    finally { el("version-check").disabled = false; }
+  });
   el("update-skip").addEventListener("click", () => {
     if (updateInfo && updateInfo.latest) writeSkipVersion(updateInfo.latest);
     showUpdateBar();

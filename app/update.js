@@ -1,59 +1,82 @@
 'use strict';
-// One check per launch against the public repo's latest release. Pure on
-// purpose: the fetch is a parameter, so the test passes a stub and main.js
-// passes Electron's net.fetch. Every failure resolves to ok:false with a
-// reason for the log; nothing here throws past checkForUpdate(). The result
-// always carries all five fields, so main.js sends it as is.
-//
-// /releases/latest excludes drafts and prereleases on GitHub's side. The
-// request is unauthenticated: 60 per hour per IP, and the app makes one.
-//
-// The download link is built from the tag rather than read from html_url,
-// so it is always a github.com URL that external-links.js lets out.
 
-const LATEST_URL = 'https://api.github.com/repos/Skigim/Ravenswatcher/releases/latest';
-const TAG_PAGE = 'https://github.com/Skigim/Ravenswatcher/releases/tag/';
-const TIMEOUT_MS = 5000;
+const semver = require('semver');
+const RELEASES_URL = 'https://api.github.com/repos/Redstoner875/Ravenswatcher/releases';
+const TAG_PAGE = 'https://github.com/Redstoner875/Ravenswatcher/releases/tag/';
+const LATEST_URL = RELEASES_URL;
 
-/** `0.1.4` or `v0.1.4` -> [0, 1, 4]. Anything else, including a prerelease
- * suffix, is null: the release workflow never publishes one, and refusing
- * to order it is safer than guessing. */
 function parseVersion(s) {
-  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(s));
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+  const version = typeof s === 'string' && /^v?\d+\.\d+\.\d+$/.test(s) ? semver.parse(s) : null;
+  return version ? [version.major, version.minor, version.patch] : null;
 }
 
-/** The tag's plain version when it parses and is newer than `current`
- * under numeric three-part comparison, else null. */
 function newerVersion(current, tag) {
-  const a = parseVersion(current);
-  const b = parseVersion(tag);
-  if (!a || !b) return null;
-  for (let i = 0; i < 3; i++) {
-    if (b[i] > a[i]) return b.join('.');
-    if (b[i] < a[i]) return null;
-  }
-  return null;
+  const a = semver.valid(current), b = semver.valid(tag);
+  return a && b && semver.gt(b, a) ? b : null;
 }
 
+// Portable copies can discover a release, but must install once to enable updates.
 async function checkForUpdate(fetch, current) {
-  const failed = (reason) => ({ current, ok: false, latest: null, url: null, reason });
-  let body;
+  const failed = reason => ({ current, ok: false, latest: null, url: null, reason });
   try {
-    const res = await fetch(LATEST_URL, {
-      headers: { Accept: 'application/vnd.github+json' },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+    const response = await fetch(RELEASES_URL, {
+      headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return failed(`status ${res.status}`);
-    body = await res.json();
-  } catch (err) {
-    return failed(err && err.message ? err.message : String(err));
-  }
-  if (!body || typeof body.tag_name !== 'string') return failed('no tag_name in response');
-  if (!parseVersion(body.tag_name)) return failed(`tag ${body.tag_name} is not a version`);
-  const latest = newerVersion(current, body.tag_name);
-  if (!latest) return { current, ok: true, latest: null, url: null, reason: null };
-  return { current, ok: true, latest, url: TAG_PAGE + body.tag_name, reason: null };
+    if (!response.ok) return failed(`status ${response.status}`);
+    const releases = await response.json();
+    if (!Array.isArray(releases)) return failed('Invalid release list');
+    const release = releases.filter(r => !r.draft && semver.valid(r.tag_name)
+      && r.assets?.some(a => /^Ravenswatcher-.*-Setup\.exe$/.test(a.name)))
+      .sort((a, b) => semver.rcompare(semver.valid(a.tag_name), semver.valid(b.tag_name)))
+      .find(r => newerVersion(current, r.tag_name));
+    return { current, ok: true, latest: release ? semver.valid(release.tag_name) : null,
+      url: release ? TAG_PAGE + encodeURIComponent(release.tag_name) : null, reason: null };
+  } catch (error) { return failed(error.message); }
 }
 
-module.exports = { parseVersion, newerVersion, checkForUpdate, LATEST_URL };
+function createUpdateController({ updater, current, onState, beforeInstall = async () => {} }) {
+  let state = { current, ok: true, latest: null, url: null, reason: null, automatic: true, status: 'idle', percent: 0 };
+  let pending = null, installing = false;
+  const publish = patch => { state = { ...state, ...patch }; onState({ ...state }); };
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = false;
+  updater.allowPrerelease = true;
+  updater.allowDowngrade = false;
+  const fail = error => publish({ status: 'error', ok: false, reason: error.message || String(error) });
+  updater.on('error', fail);
+  updater.on('checking-for-update', () => publish({ status: 'checking', ok: true, reason: null }));
+  updater.on('update-not-available', () => publish({ status: 'idle', ok: true, latest: null, url: null, reason: null }));
+  updater.on('update-available', info => publish({ status: 'downloading', ok: true, latest: info.version,
+    url: TAG_PAGE + 'v' + encodeURIComponent(info.version), reason: null, percent: 0 }));
+  updater.on('download-progress', info => publish({ status: 'downloading', percent: Math.max(0, Math.min(100, Number(info.percent) || 0)) }));
+  updater.on('update-downloaded', info => publish({ status: 'downloaded', ok: true, latest: info.version,
+    url: TAG_PAGE + 'v' + encodeURIComponent(info.version), percent: 100, reason: null }));
+  return {
+    get state() { return { ...state }; },
+    check() {
+      if (pending) return pending;
+      if (['downloading', 'downloaded', 'installing'].includes(state.status)) return Promise.resolve(state);
+      // Keep the download rejection handled too: checkForUpdates resolves before the download does.
+      pending = Promise.resolve().then(() => updater.checkForUpdates()).then(result => {
+        if (result?.downloadPromise) result.downloadPromise.catch(fail);
+      }).catch(fail).finally(() => { pending = null; });
+      return pending;
+    },
+    async install() {
+      if (installing || state.status !== 'downloaded') return { ok: false, error: 'No downloaded update is ready.' };
+      installing = true;
+      publish({ status: 'installing' });
+      try {
+        await beforeInstall();
+        updater.quitAndInstall(false, true);
+        return { ok: true };
+      } catch (error) {
+        installing = false;
+        fail(error);
+        return { ok: false, error: error.message };
+      }
+    },
+  };
+}
+
+module.exports = { parseVersion, newerVersion, checkForUpdate, createUpdateController, LATEST_URL };

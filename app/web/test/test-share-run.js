@@ -132,7 +132,7 @@ async function main() {
   assert.ok(data.missing > 0);
   assert.ok(!data.overflow);
 
-  for (const text of ['Epilogue', '0/5 notes', 'Completed', 'Locked', '×0', '×301', 'github.com/Skigim/Ravenswatcher']) {
+  for (const text of ['Epilogue', '0/5 notes', 'Completed', 'Locked', '×0', '×301', 'github.com/Redstoner875/Ravenswatcher']) {
     assert.ok(data.text.includes(text), text);
   }
   assert.ok(!data.text.includes('Secret modifier'));

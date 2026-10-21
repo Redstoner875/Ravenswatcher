@@ -41,7 +41,7 @@
       <!-- Same box as the gear, but a link: it leaves the window for the
            public issues page, and main.js lets it out only because github.com
            is in external-links.js. -->
-      <a class="gear" id="bug-report" href="https://github.com/Skigim/Ravenswatcher/issues" target="_blank" rel="noopener"
+      <a class="gear" id="bug-report" href="https://github.com/Redstoner875/Ravenswatcher/issues" target="_blank" rel="noopener"
          aria-label="Report a bug" title="Report a bug">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true" focusable="false">
@@ -70,6 +70,7 @@
   <div class="update-bar" id="update-bar" role="status" hidden>
     <span class="update-text" id="update-text"></span>
     <a class="update-btn update-btn-primary" id="update-download" target="_blank" rel="noopener">Download</a>
+    <button class="update-btn update-btn-primary" id="update-install" type="button" hidden>Restart to update</button>
     <button class="update-btn" id="update-skip" type="button">Skip this release</button>
     <button class="update-btn" id="update-later" type="button">Remind me later</button>
   </div>
@@ -236,6 +237,8 @@
       <div class="settings-note" id="version-note"></div>
     </div>
     <a class="coffee" id="version-download" target="_blank" rel="noopener" hidden>Download</a>
+    <button class="coffee" id="version-install" type="button" hidden>Restart to update</button>
+    <button class="coffee" id="version-check" type="button">Check for updates</button>
   </div>
   <!-- The href is the one place the link lives. main.js only lets https
        links to the hosts in external-links.js out of the window, so a
@@ -243,7 +246,7 @@
        second window. -->
   <div class="settings-foot">
     <div class="settings-note">Enjoying the tool?</div>
-    <a class="coffee" id="coffee" href="https://ko-fi.com/skigim" target="_blank" rel="noopener">Support on Ko-fi</a>
+    <a class="coffee" id="coffee" href="https://github.com/Redstoner875/Ravenswatcher/releases" target="_blank" rel="noopener">Project releases</a>
   </div>
 </aside>
 

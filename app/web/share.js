@@ -213,7 +213,7 @@ async function renderShare({ run, tables = {}, stylizedFonts = true }) {
   root.append(panel);
 
   const footer = node("footer", "footer");
-  footer.append(node("b", "", "github.com/Skigim/Ravenswatcher"), node("span", "", "RUN SUMMARY"));
+  footer.append(node("b", "", "github.com/Redstoner875/Ravenswatcher"), node("span", "", "RUN SUMMARY"));
   root.append(footer);
 
   await document.fonts.ready;

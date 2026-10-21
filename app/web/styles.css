@@ -315,7 +315,7 @@ body {
 /* Same story as .settings[hidden]: the class sets display, so [hidden] has
    to be restated or the bar draws with no text in it. .coffee is reused for
    the version row's link and needs the same. */
-.update-bar[hidden], .coffee[hidden] { display: none; }
+.update-bar[hidden], .coffee[hidden], .update-btn[hidden] { display: none; }
 .update-text {
   flex: 1;
   font-size: 13px;

@@ -1,8 +1,15 @@
 # Changelog
 
+## 0.1.7 — unreleased
+
+* Installed Windows copies download updates from Redstoner875/Ravenswatcher and offer Restart to update.
+* Releases include a Windows installer, portable ZIP and update metadata. Automatic builds have unique beta versions.
+* Existing settings, run history and decoded assets survive installation and updates.
+* Project links, bug reports and shared run images point to this repository.
+
 ## 0.1.6 — 2026-10-17
 
-* Ravenswatcher is now fully open source under the MIT license. The complete app source has moved into the [Ravenswatcher repository](https://github.com/Skigim/Ravenswatcher) alongside its releases.
+* Ravenswatcher is now fully open source under the MIT license. The complete app source has moved into the [Ravenswatcher repository](https://github.com/Redstoner875/Ravenswatcher) alongside its releases.
 * Share Run copies a complete build image to the clipboard, including hero, score, melodies, talents, object stacks and damage.
 * The final stage is displayed as Epilogue across Live, History and shared images.
 * Stylized headings compose Kintarō’s macron using Germania One’s own glyphs.

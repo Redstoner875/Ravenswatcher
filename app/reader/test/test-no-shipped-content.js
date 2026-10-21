@@ -35,6 +35,13 @@ function main() {
       assert.ok(web.includes('web/assets/fonts/' + name), 'offline font or license missing: ' + name);
     }
     assert.ok(fs.existsSync(path.join(stage, 'assets', 'build.js')), 'assets/build.js missing from stage');
+    for (const name of ['electron-updater', 'semver']) {
+      const resolved = require.resolve(name, { paths: [stage] });
+      assert.ok(resolved.startsWith(stage + path.sep), `runtime dependency missing from stage: ${name}`);
+    }
+    const updaterEntry = require.resolve('electron-updater', { paths: [stage] });
+    assert.ok(require.resolve('builder-util-runtime', { paths: [path.dirname(updaterEntry)] }).startsWith(stage + path.sep),
+      'updater transitive dependency is missing');
     assert.ok(fs.existsSync(path.join(stage, 'assets', 'build-worker.js')), 'assets/build-worker.js missing from stage');
     assert.ok(fs.existsSync(path.join(stage, 'THIRD_PARTY_NOTICES.md')), 'notices missing from stage');
     assert.strictEqual(fs.readFileSync(path.join(stage, 'LICENSE'), 'utf8'),

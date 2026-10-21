@@ -43,7 +43,9 @@ jobs:
             echo "title=Ravenswatcher $version" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=v$version-build.$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            build_version="$version-beta.$RUN_NUMBER"
+            npm version "$build_version" --no-git-tag-version
+            echo "tag=v$build_version" >> "$GITHUB_OUTPUT"
             echo "title=Ravenswatcher $version — build $RUN_NUMBER" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
@@ -51,18 +53,23 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - name: Build Windows x64 ZIP
-        run: npm run dist -- --win zip --x64 --publish never
+      - name: Build Windows x64 installer and ZIP
+        run: npm run dist -- --win nsis zip --x64 --publish never
 
       - name: Keep build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Ravenswatcher-Windows-x64-${{ steps.release.outputs.tag }}
-          path: build/release/*.zip
+          path: |
+            build/release/*.zip
+            build/release/*-Setup.exe
+            build/release/*.blockmap
+            build/release/latest.yml
+            build/release/beta.yml
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish release and ZIP
+      - name: Publish release and update files
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -72,8 +79,12 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           shopt -s nullglob
-          files=(../build/release/*.zip)
-          [ "${#files[@]}" -gt 0 ] || { echo 'No Windows ZIP was built'; exit 1; }
+          files=(../build/release/*.zip ../build/release/*-Setup.exe ../build/release/*.blockmap ../build/release/latest.yml ../build/release/beta.yml)
+          installers=(../build/release/*-Setup.exe)
+          [ "${#installers[@]}" -gt 0 ] || { echo 'No Windows installer was built'; exit 1; }
+          metadata=../build/release/latest.yml
+          if [ "$PRERELEASE" = true ]; then metadata=../build/release/beta.yml; fi
+          [ -s "$metadata" ] || { echo "Missing updater metadata: $metadata"; exit 1; }
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
           else

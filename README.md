@@ -6,13 +6,19 @@ Built for Windows. It also runs on Linux under Proton; see [Linux](#linux).
 
 ## Install
 
-1. Download the latest `Ravenswatcher-<version>-win-x64.zip` from the [Releases page](https://github.com/Skigim/Ravenswatcher/releases/latest).
-2. Extract the folder anywhere. There is no installer.
-3. Run `Ravenswatcher.exe`.
+1. Download the newest `Ravenswatcher-<version>-win-x64-Setup.exe` from the [Releases page](https://github.com/Redstoner875/Ravenswatcher/releases).
+2. Run the installer, then open Ravenswatcher from the Start menu or shortcut.
+3. Future updates download in the background. Choose **Restart to update** when you're ready.
+
+If you used an older ZIP, close that copy and install once to enable automatic
+updates. Your existing settings, saved runs and game-asset cache are preserved.
+ZIP downloads remain available: fully extract them before running the EXE.
+Portable ZIP copies show a download link instead of replacing themselves.
 
 The first time, Windows SmartScreen shows **Windows protected your PC**, because the app isn't signed with a paid certificate. Click **More info**, then **Run anyway**.
 
-To uninstall, delete the folder. The app stores its settings in your Windows user profile and nothing else.
+Uninstall the installed app from Windows Settings. Delete the folder for a
+portable ZIP copy. Settings, history and cached assets stay in your user profile.
 
 ## Use
 
@@ -57,13 +63,14 @@ The app reads the game's memory to do its job, which some antivirus products tre
 
 If the tool is useful to you, there's a **Support on Ko-fi** button in the settings panel.
 
-Problems and requests go in [Issues](https://github.com/Skigim/Ravenswatcher/issues).
+Problems and requests go in [Issues](https://github.com/Redstoner875/Ravenswatcher/issues).
 
 ## Automatic Windows releases
 
 Every push to `main` runs the **Build and release Windows** GitHub Action.
-After type checking and tests pass, it builds the portable Windows x64 ZIP
-and uploads it to a development release, such as `v0.1.6-build.3`.
+After type checking and tests pass, it builds a Windows x64 installer and ZIP,
+then uploads them and updater metadata to a development release, such as
+`v0.1.7-beta.3`. Each automatic build embeds its unique version in the app.
 Downloads are on this fork's [Releases page](https://github.com/Redstoner875/Ravenswatcher/releases).
 Fully extract the ZIP before running the EXE.
 
@@ -78,14 +85,14 @@ The workflow uses GitHub's built-in token; no additional secrets are required.
 On Windows, install Node.js 22.15 or newer (including Node 24/26) and Git:
 
 ```powershell
-git clone https://github.com/Skigim/Ravenswatcher.git
+git clone https://github.com/Redstoner875/Ravenswatcher.git
 cd Ravenswatcher/app
 npm ci
 npm test
 npm start
 ```
 
-`npm run dist` builds the portable zip in `build/release/` at the repository
+`npm run dist` builds the installer and portable ZIP in `build/release/` at the repository
 root. The build and tests need no game dump, Python, or private repository.
 The app needs your own installed copy of Ravenswatch to display live data.
 It decodes icons and item descriptions from that install at runtime.

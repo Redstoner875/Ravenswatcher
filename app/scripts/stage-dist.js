@@ -21,8 +21,35 @@ const WEB_SKIP = new Set(['test']);
 // runtime decodes its own from the player's install (assets/build.ts). The
 // manifest ships; its first two columns are what the runtime build reads.
 const WEB_SKIP_FILE = (rel) => /^assets\/[^/]+\.png$/.test(rel) || rel === 'item-text.js' || rel === 'item-icons.js';
-const NATIVE = ['node_modules/koffi', 'node_modules/@koromix/koffi-win32-x64'];
-const NATIVE_SKIP = new Set(['doc', 'vendor']);
+const DEPENDENCY_SKIP = new Set(['doc', 'vendor', 'node_modules']);
+
+async function copyDependencies() {
+  const copied = new Set();
+  async function visit(name, from, optional = false) {
+    let dir = from, source;
+    for (;;) {
+      const candidate = path.join(dir, 'node_modules', name);
+      if (fs.existsSync(path.join(candidate, 'package.json'))) { source = candidate; break; }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!source) {
+      if (optional) return;
+      throw new Error(`Missing runtime dependency ${name}`);
+    }
+    if (copied.has(source)) return;
+    const rel = path.relative(APP, source);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`Dependency outside app: ${name}`);
+    copied.add(source);
+    await copyTree(source, path.join(STAGE, rel), DEPENDENCY_SKIP);
+    const pkg = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8'));
+    for (const dep of Object.keys(pkg.dependencies || {})) await visit(dep, source, dep in (pkg.optionalDependencies || {}));
+    for (const dep of Object.keys(pkg.optionalDependencies || {})) await visit(dep, source, true);
+  }
+  const pkg = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8'));
+  for (const name of Object.keys(pkg.dependencies || {})) await visit(name, APP);
+}
 
 function rm(p) { fs.rmSync(p, { recursive: true, force: true }); }
 function mkdir(p) { fs.mkdirSync(p, { recursive: true }); }
@@ -90,14 +117,7 @@ async function main() {
   // Native module and its platform package, as-is apart from docs. These are
   // third-party files and are not minified; the .node binary is unpacked
   // from the asar by the asarUnpack rule carried over from package.json.
-  for (const rel of NATIVE) {
-    const src = path.join(APP, rel);
-    const dst = path.join(STAGE, rel);
-    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-      if (NATIVE_SKIP.has(entry.name)) continue;
-      fs.cpSync(path.join(src, entry.name), path.join(dst, entry.name), { recursive: true });
-    }
-  }
+  await copyDependencies();
 
   stagePackageJson();
 

@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('ravenswatch', {
   // `latest` and `url` are null when nothing is newer, `ok` is false when
   // the check itself failed, and `reason` says why (null otherwise).
   onUpdate: subscribe(UPDATE_CHANNEL),
+  checkForUpdates: () => ipcRenderer.invoke('readout:update-check'),
+  installUpdate: () => ipcRenderer.invoke('readout:update-install'),
 
   // callback({runs, skipped}) fires with the whole run history, oldest
   // first, on every page load and again after each finished run is saved.

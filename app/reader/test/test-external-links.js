@@ -8,16 +8,16 @@ const path = require('path');
 const { isAllowedExternal } = require('../../external-links');
 
 function main() {
-  assert.strictEqual(isAllowedExternal('https://ko-fi.com/skigim'), true);
-  assert.strictEqual(isAllowedExternal('https://www.ko-fi.com/skigim'), true);
+  assert.strictEqual(isAllowedExternal('https://ko-fi.com/example'), true);
+  assert.strictEqual(isAllowedExternal('https://www.ko-fi.com/example'), true);
 
   // Same hosts, wrong scheme: a downgrade is not a donation link.
-  assert.strictEqual(isAllowedExternal('http://ko-fi.com/skigim'), false);
+  assert.strictEqual(isAllowedExternal('http://ko-fi.com/example'), false);
   // Look-alikes and everything else.
   assert.strictEqual(isAllowedExternal('https://ko-fi.com.example.com/x'), false);
   assert.strictEqual(isAllowedExternal('https://example.com/ko-fi.com'), false);
-  assert.strictEqual(isAllowedExternal('https://github.com/Skigim/Ravenswatcher/issues'), true);
-  assert.strictEqual(isAllowedExternal('http://github.com/Skigim/Ravenswatcher/issues'), false);
+  assert.strictEqual(isAllowedExternal('https://github.com/Redstoner875/Ravenswatcher/issues'), true);
+  assert.strictEqual(isAllowedExternal('http://github.com/Redstoner875/Ravenswatcher/issues'), false);
   assert.strictEqual(isAllowedExternal('https://github.com.example.com/x'), false);
   assert.strictEqual(isAllowedExternal('file:///C:/x'), false);
   assert.strictEqual(isAllowedExternal('not a url'), false);

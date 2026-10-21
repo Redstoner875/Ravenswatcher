@@ -34,7 +34,7 @@ if (typeof electron === 'string') {
 const { app, BrowserWindow } = electron;
 const INDEX = path.join(__dirname, '..', 'index.html');
 const KEY = 'ravenswatch:skip-version';
-const URL_014 = 'https://github.com/Skigim/Ravenswatcher/releases/tag/v0.1.4';
+const URL_014 = 'https://github.com/Redstoner875/Ravenswatcher/releases/tag/v0.1.4';
 const NEWER = { current: '0.1.3', ok: true, latest: '0.1.4', url: URL_014 };
 
 let failures = 0;
@@ -71,6 +71,9 @@ async function main() {
       note: g('version-note').textContent,
       rowHidden: g('version-download').hidden,
       rowHref: g('version-download').getAttribute('href'),
+      installHidden: g('update-install').hidden,
+      rowInstallHidden: g('version-install').hidden,
+      downloadHidden: g('update-download').hidden,
       stored: localStorage.getItem(${JSON.stringify(KEY)}),
     };
   })()`);
@@ -177,6 +180,23 @@ async function main() {
   check('storage blocked: turning diagnostics off still clears the reason', s.note === '', JSON.stringify(s.note));
   await js(`localStorage.removeItem('ravenswatch:diagnostics')`);
   await reload();
+
+  await js(`localStorage.removeItem(${JSON.stringify(KEY)})`);
+  await apply({ ...NEWER, automatic: true, status: 'downloading', percent: 42 });
+  s = await state();
+  check('automatic download reports progress', s.text.includes('42%') && s.note.includes('42%'));
+  check('download cannot restart before it is ready', s.installHidden && s.rowInstallHidden);
+  check('automatic updates do not open a download page', s.downloadHidden);
+  await apply({ ...NEWER, automatic: true, status: 'downloaded', percent: 100 });
+  s = await state();
+  check('ready update offers restart in bar and settings', !s.installHidden && !s.rowInstallHidden);
+  await js(`window.installRequests = 0; window.ravenswatch = { installUpdate: async () => { window.installRequests++; return {ok:true}; } }; null`);
+  await click('update-install');
+  check('restart is requested only after clicking', await js('window.installRequests === 1'));
+  await apply({ current:'0.1.7', ok:true, latest:null, url:null, automatic:false, portable:true });
+  s = await state();
+  check('portable copy always offers installer migration', !s.rowHidden && s.note.includes('Install once'));
+  check('portable migration points at our releases', s.rowHref === 'https://github.com/Redstoner875/Ravenswatcher/releases');
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' FAILURE(S)'}`);
   app.exit(failures === 0 ? 0 : 1);
