@@ -1,0 +1,12 @@
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+body { user-select: none; font-family: Arial, sans-serif; color: #e4edf4; }
+#map { position: absolute; inset: 0; pointer-events: none; }
+#map svg { width: 100%; height: 100%; display: block; background: transparent; }
+#move, #resize { display: none; }
+body.unlocked { box-shadow: inset 0 0 0 2px #8cd0ff; background: #10202c18; }
+body.unlocked #map { top: 24px; }
+body.unlocked #move { display: block; position: absolute; inset: 0 0 auto; height: 24px; line-height: 24px; text-align: center; font-size: 11px; background: #10202cdd; app-region: drag; -webkit-app-region: drag; }
+body.unlocked #resize { display: block; position: absolute; bottom: 0; right: 0; width: 28px; height: 28px; line-height: 28px; text-align: center; background: #10202cdd; cursor: nwse-resize; }
+.poi-completed .poi-graphic { filter: grayscale(1); opacity: .45; }
+.poi-completed-x { filter: drop-shadow(0 0 2px #000); }
+mask { mask-type: alpha; }

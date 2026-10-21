@@ -6,6 +6,7 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 
 const SUITES = [
+  ['test-overlay', () => require('./test-overlay').main()],
   ['test-review-fixes', () => require('./test-review-fixes').main()],
   ['test-readonly', () => require('./test-readonly').main()],
   ['test-value-types', () => require('./test-value-types').main()],
@@ -48,6 +49,7 @@ const SUITES = [
 // a real window, so it needs an Electron runtime rather than plain node, and
 // it reports through its own exit code.
 const SPAWNED = [
+  ['test-overlay-window', path.join(__dirname, '..', '..', 'web', 'test', 'test-overlay-window.js')],
   ['test-seams', path.join(__dirname, '..', '..', 'web', 'test', 'test-seams.js')],
   ['test-coop-consent', path.join(__dirname, '..', '..', 'web', 'test', 'test-coop-consent.js')],
   ['test-tile-cols', path.join(__dirname, '..', '..', 'web', 'test', 'test-tile-cols.js')],

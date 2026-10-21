@@ -229,6 +229,15 @@
       <output class="slider-value" id="tile-cols-value" for="tile-cols">5</output>
     </div>
   </div>
+  <fieldset class="overlay-settings">
+    <legend>Game minimap overlay</legend>
+    <div class="settings-row"><label><input id="overlay-enabled" type="checkbox"> Show map overlay</label></div>
+    <div class="settings-row"><label><input id="overlay-locked" type="checkbox" checked> Lock overlay · click-through</label><button id="overlay-reset" type="button">Reset position</button></div>
+    <p class="settings-note">Unlock here to move it by its top bar or resize from its bottom-right corner. Lock it again to pass all clicks to the game. The entire map stays visible; change POIs and orientation in the app's POI map.</p>
+    <div class="settings-row"><label><input id="game-borderless" type="checkbox"> Make Ravenswatch borderless</label><button id="game-window-restore" type="button">Restore game window</button></div>
+    <p class="settings-note">Choose Windowed in Ravenswatch first. This fills its monitor and removes the window frame. Turning this off or closing the app restores the previous window.</p>
+    <p class="settings-note" id="overlay-status" role="status"></p>
+  </fieldset>
   <!-- Ignores skip and dismiss on purpose: the download stays reachable
        here after the bar is gone. -->
   <div class="settings-row">
@@ -282,5 +291,6 @@
 <script src="run-presentation.js"></script>
 <script src="poi-map.js"></script>
 <script src="app.js"></script>
+<script src="overlay-settings.js"></script>
 </body>
 </html>

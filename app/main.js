@@ -19,7 +19,8 @@
 // sidecar's stderr is diagnostic text (the attach banner, tracebacks), never
 // state: it's logged and never parsed as a frame.
 
-const { app, BrowserWindow, shell, protocol, net, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, protocol, net, ipcMain, screen } = require('electron');
+const { createOverlay } = require('./overlay');
 const { isAllowedExternal } = require('./external-links');
 const fs = require('fs');
 const path = require('path');
@@ -135,6 +136,16 @@ let rendererReady = false;
 let updateInfo = null;
 let updateController = null;
 let installingUpdate = false;
+let overlay = null;
+ipcMain.handle('readout:overlay-settings', (event, input) => {
+  if (!historyRequest(event, () => ({})).ok || !overlay) return { ok: false };
+  try { return { ok: true, state: input ? overlay.configure(input) : overlay.state }; }
+  catch (error) { return { ok: false, error: error.message, state: overlay.state }; }
+});
+ipcMain.on('readout:overlay-map', (event, payload) => {
+  if (historyRequest(event, () => ({})).ok) overlay?.receive(payload);
+});
+ipcMain.on('overlay:resize', (event, input) => overlay?.resize(event, input));
 
 ipcMain.handle('readout:update-check', async event => {
   if (!historyRequest(event, () => ({})).ok) return { ok: false };
@@ -282,8 +293,8 @@ const sidecar = createSidecar({
   packaged: PACKAGED,
   resourcesPath: process.resourcesPath,
   repoRoot: REPO_ROOT,
-  onFrame: (frame) => { if (frame.type === 'players') { sendToRenderer(PLAYERS_CHANNEL, frame); return; } recordRun(frame); sendToRenderer(STATE_CHANNEL, frame); maybeBuildAssets(frame); },
-  onDown: (notice) => { assetsBuilt = false; sendToRenderer(SIDECAR_DOWN_CHANNEL, notice); },
+  onFrame: (frame) => { if (frame.type === 'players') { sendToRenderer(PLAYERS_CHANNEL, frame); return; } if (!frame.error) overlay?.observeGame(frame.pid); recordRun(frame); sendToRenderer(STATE_CHANNEL, frame); maybeBuildAssets(frame); },
+  onDown: (notice) => { assetsBuilt = false; overlay?.observeGame(null); sendToRenderer(SIDECAR_DOWN_CHANNEL, notice); },
 });
 
 async function createWindow() {
@@ -307,6 +318,7 @@ async function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    overlay?.shutdown();
     mainWindow = null;
     rendererReady = false;
   });
@@ -333,6 +345,10 @@ async function createWindow() {
     flushPendingSends();
     sendUpdate();
     sendHistory();
+    if (overlay) {
+      mainWindow.webContents.setBackgroundThrottling(!overlay.state.enabled);
+      sendToRenderer('readout:overlay-status', overlay.state);
+    }
     sendToRenderer(ASSETS_CHANNEL, cachedTables);
   });
 
@@ -352,7 +368,7 @@ if (!gotLock) {
   app.quit();
 } else {
   const lifecycle = createLifecycle({
-    stop: () => sidecar.stop(),
+    stop: () => { overlay?.shutdown(); return sidecar.stop(); },
     quit: () => app.quit(),
     relaunch: () => app.relaunch(),
     onError: error => { console.error('[main] shutdown failed:', error); sidecar.forceStop(); },
@@ -375,6 +391,11 @@ if (!gotLock) {
       console.error('[main] run history unreadable:', err.message);
     }
     protocol.handle('asset', serveAsset);
+    overlay = createOverlay({ BrowserWindow, screen, directory: USER_DATA,
+      onState: state => sendToRenderer('readout:overlay-status', state),
+      onEnabled: enabled => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setBackgroundThrottling(!enabled); } });
+    overlay.start();
+    for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(event, () => overlay?.displaysChanged());
     sendCachedTables();
     sidecar.start();
     createWindow().catch((err) => {
@@ -388,7 +409,7 @@ if (!gotLock) {
       updateController = createUpdateController({
         updater: autoUpdater, current: app.getVersion(),
         onState: info => { updateInfo = info; sendUpdate(); },
-        beforeInstall: async () => { await sidecar.stop(); installingUpdate = true; },
+        beforeInstall: async () => { overlay?.shutdown(); await sidecar.stop(); installingUpdate = true; },
       });
       void updateController.check();
       setInterval(() => { void updateController.check(); }, 4 * 60 * 60 * 1000).unref();

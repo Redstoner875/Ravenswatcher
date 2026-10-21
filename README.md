@@ -110,3 +110,23 @@ Ravenswatch and its game content belong to their respective owners.
 ## POI coordinate map
 
 This modified source adds individual placement coordinates and a spatial POI view beside the existing roster. See [MAP_COORDINATES.md](MAP_COORDINATES.md) for usage, offset evidence, coverage limits and live validation.
+
+## Game minimap overlay
+
+In Ravenswatcher's Settings, enable **Show map overlay**. The compact window
+shows the entire map with a transparent background; terrain, POI filters,
+orientation, completion marks and player portraits follow the app's POI map.
+Zoom, pan and follow-player in the app do not crop the overlay.
+
+Uncheck **Lock overlay** to move it using its top bar and resize it using the
+bottom-right corner. Lock it again to pass all mouse input through to the game.
+Map interactions stay in the main app. Position and size are saved, and the
+overlay starts locked next launch. It continues updating when the main window
+is minimized or the POI panel is closed.
+
+If the game's Fullscreen mode hides the overlay, select **Windowed** in
+Ravenswatch, then enable **Make Ravenswatch borderless** in the app. This
+removes the game's window frame and fills its current monitor. **Restore game
+window**, turning the setting off, or closing Ravenswatcher restores the saved
+window frame, position and size. The setting can also reapply when the game is
+restarted. This feature changes Windows window styles, not game memory.

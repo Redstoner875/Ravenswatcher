@@ -129,6 +129,65 @@
   let projection = null, selectedId = null, selectedPlayerId = '', markerNodes = [], playersKey = '';
   let completionButtons = [];
   const svg = get('poi-map');
+  let overlayEnabled = false, overlayGeneration = -1, overlaySceneKey = '', overlayPlayersKey = '', lastOverlayPositions = -Infinity;
+  const mapVisible = () => get('poi-map-panel').open || overlayEnabled;
+  const overlayScope = () => `${state?.pid ?? ''}|${state?.map_id}`;
+  function publishOverlay(kind, extra) {
+    if (overlayEnabled && state) root.ravenswatch?.publishOverlay?.({ kind, pid: state.pid, scope: overlayScope(), ...extra });
+  }
+  function cleanOverlay(svgCopy) {
+    svgCopy.querySelectorAll('.poi-hit-target, .poi-grid, title').forEach(n => n.remove());
+    svgCopy.querySelectorAll('.poi-marker:not(.poi-completed) .poi-completed-x').forEach(n => n.remove());
+    for (const n of [svgCopy, ...svgCopy.querySelectorAll('*')]) {
+      for (const attr of ['style', 'tabindex', 'role', 'aria-label', 'aria-pressed']) n.removeAttribute(attr);
+    }
+    return svgCopy;
+  }
+  function publishOverlayPositions(force = false) {
+    const now = clock();
+    if (!overlayEnabled || !force && now - lastOverlayPositions < 16) return;
+    lastOverlayPositions = now;
+    publishOverlay('positions', { points: markerNodes.filter(m => m.player).map(m => ({ id: m.player, x: m.p.x, y: m.p.y })) });
+  }
+  function publishOverlayPlayers() {
+    if (!overlayEnabled) return;
+    const wrapper = node('svg', { xmlns: ns });
+    const group = svg.querySelector('.poi-players')?.cloneNode(true);
+    if (group) {
+      group.querySelectorAll('.poi-player').forEach(n => n.removeAttribute('transform'));
+      wrapper.append(group);
+    }
+    const markup = cleanOverlay(wrapper).outerHTML;
+    if (markup !== overlayPlayersKey) { overlayPlayersKey = markup; publishOverlay('players', { svg: markup }); }
+    publishOverlayPositions(true);
+  }
+  function publishOverlayScene() {
+    if (!overlayEnabled || !projection || !state) return;
+    const copy = cleanOverlay(svg.cloneNode(true)); copy.querySelector('.poi-players')?.remove();
+    copy.removeAttribute('id'); copy.setAttribute('xmlns', ns);
+    const tiles = markerNodes.filter(m => m.tile);
+    copy.querySelectorAll('.poi-marker').forEach((n, i) => n.setAttribute('transform', `translate(${tiles[i].p.x} ${tiles[i].p.y})`));
+    const points = projection.terrain ? [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: 1, y: 1 }].map(projection.projectUV)
+      : projection.points.map(t => projection.project(t.position));
+    if (points.length) {
+      const pad = Math.max(80, prefs.size / 2 + 10), xs = points.map(p => p.x), ys = points.map(p => p.y);
+      const x = Math.min(...xs) - pad, y = Math.min(...ys) - pad;
+      copy.setAttribute('viewBox', [x, y, Math.max(...xs) - x + pad, Math.max(...ys) - y + pad].join(' '));
+    } else copy.setAttribute('viewBox', '0 0 800 600');
+    const markup = copy.outerHTML, next = overlayScope() + markup;
+    if (next !== overlaySceneKey) {
+      overlaySceneKey = next; overlayPlayersKey = '';
+      publishOverlay('scene', { svg: markup, hasMap: Array.isArray(state.map_tiles) && state.map_tiles.length > 0 });
+      publishOverlayPlayers();
+    }
+  }
+  api.setOverlay = config => {
+    const enabled = config?.enabled === true;
+    if (overlayEnabled === enabled && overlayGeneration === config?.generation) return;
+    overlayEnabled = enabled; overlayGeneration = config?.generation;
+    overlaySceneKey = ''; overlayPlayersKey = '';
+    if (enabled) paint();
+  };
   let terrainMaps = {}, terrainErrors = {}, heroIcons = {}, heroEntities = {};
   const playerMotion = new Map(), failedPortraits = new Set();
   let animation = null;
@@ -152,7 +211,7 @@
   }
   function animatePlayers() {
     animation = null;
-    if (!projection || !get('poi-map-panel').open) return;
+    if (!projection || !mapVisible()) return;
     const now = clock();
     let moving = false;
     for (const m of markerNodes) {
@@ -205,6 +264,7 @@
     svg.setAttribute('viewBox', view.join(' '));
     // Fixed apparent icon size while zooming; only the coordinates are magnified.
     for (const { n, p } of markerNodes) n.setAttribute('transform', `translate(${p.x} ${p.y}) scale(${view[2] / 800})`);
+    publishOverlayPositions();
   }
   function reset() { view = [0, 0, 800, 600]; setView(); }
   function players() { return (state?.players || []).filter(p => valid(p.position)); }
@@ -223,6 +283,7 @@
     selectedId = poiId(t);
     if (completed.has(selectedId)) completed.delete(selectedId); else completed.add(selectedId);
     updateCompletionMarkers(); updateSelection();
+    publishOverlayScene();
   }
   function updatePlayerSelect() {
     const ps = players(), select = get('poi-map-player');
@@ -304,7 +365,7 @@
     }
   }
   function paintPois() {
-    if (!state || !get('poi-map-panel').open) return;
+    if (!state || !mapVisible()) return;
     // Bounds depend on all placements on this layer, never on visibility filters or player motion.
     projection = model(state.map_tiles, get('poi-map-layer').value, mapOrientation(), activeTerrain());
     const m = projection, rows = m.rows.filter(t => enabled(t, prefs)), points = rows.filter(t => valid(t.position));
@@ -328,9 +389,9 @@
     }
     for (let i = 0; !m.terrain && i <= 4; i++) {
       const x = 50 + i * 175, y = 50 + i * 125;
-      svg.append(node('path', { d: `M${x} 35V565 M35 ${y}H765`, stroke: '#344451', 'stroke-width': 1 }));
-      if (prefs.rotation === 0 && prefs.flipY) svg.append(node('text', { x, y: 590, fill: '#bdcbd5', 'font-size': 12, 'text-anchor': 'middle' }, m.world({ x, y: 300 }).x.toFixed(1)));
-      if (prefs.rotation === 0 && prefs.flipY) svg.append(node('text', { x: 4, y, fill: '#bdcbd5', 'font-size': 12 }, m.world({ x: 400, y }).y.toFixed(1)));
+      svg.append(node('path', { class: 'poi-grid', d: `M${x} 35V565 M35 ${y}H765`, stroke: '#344451', 'stroke-width': 1 }));
+      if (prefs.rotation === 0 && prefs.flipY) svg.append(node('text', { class: 'poi-grid', x, y: 590, fill: '#bdcbd5', 'font-size': 12, 'text-anchor': 'middle' }, m.world({ x, y: 300 }).x.toFixed(1)));
+      if (prefs.rotation === 0 && prefs.flipY) svg.append(node('text', { class: 'poi-grid', x: 4, y, fill: '#bdcbd5', 'font-size': 12 }, m.world({ x: 400, y }).y.toFixed(1)));
     }
     points.forEach((t, i) => {
       const p = m.project(t.position), g = node('g', { class: 'poi-marker', tabindex: 0, role: 'button', 'aria-label': describe(t) });
@@ -355,6 +416,7 @@
       table.append(tr);
     }
     updateCompletionMarkers(); setView(); paintPlayers(); updateSelection();
+    publishOverlayScene();
   }
   function updateCompletionMarkers() {
     for (const { button, row, tile } of completionButtons) {
@@ -374,7 +436,7 @@
     get('poi-map-completion-status').textContent = `${completed.size} marked complete · click a POI again to undo`;
   }
   function paintPlayers() {
-    if (!projection || !get('poi-map-panel').open) return;
+    if (!projection || !mapVisible()) return;
     svg.querySelector('.poi-players')?.remove();
     markerNodes = markerNodes.filter(m => m.tile);
     const own = selectedPlayer();
@@ -389,6 +451,7 @@
         const color = selected ? '#98d66e' : ['#83bfff', '#edb1ee', '#ffc475', '#7ee0db'][i % 4];
         const label = `${selected ? 'You' : 'Player ' + (i + 1)} · ${name}`;
         const g = node('g', { class: 'poi-player', 'aria-label': `${label}: X ${p.position.x}, Y ${p.position.y}` });
+        g.dataset.playerId = p.id;
         if (portrait) {
           // The pointer marks position, not facing direction (which is not read).
           const fallback = node('path', { d: 'M0 -17L12 0L0 17L-12 0Z', fill: color, stroke: '#10212d', 'stroke-width': 3, visibility: 'hidden' });
@@ -413,12 +476,13 @@
       m.n.querySelector('title').textContent = describe(m.tile); m.n.setAttribute('aria-label', describe(m.tile));
     }
     startPlayerAnimation(); updateSelection();
+    publishOverlayPlayers();
   }
   function paint() { updatePlayerSelect(); buildFilters(); paintPois(); }
   api.render = s => {
     if (s.no_run === true || s.map_id === -1) s = { ...s, map_tiles: null, players: [] };
     const scope = `${s.pid ?? ''}|${s.map_id}`;
-    if (scope !== completionScope || s.no_run === true || s.map_id === -1) { completed.clear(); playerMotion.clear(); completionScope = scope; }
+    if (scope !== completionScope || s.no_run === true || s.map_id === -1) { completed.clear(); playerMotion.clear(); completionScope = scope; key = ''; }
     state = s;
     receivePlayers(players());
     const next = JSON.stringify([s.map_id, s.map_name, s.map_tiles]);

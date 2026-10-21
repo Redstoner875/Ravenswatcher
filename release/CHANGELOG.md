@@ -2,6 +2,10 @@
 
 ## 0.1.7 — unreleased
 
+* Added a transparent full-map minimap overlay, synchronized with the main POI map even when the main window is minimized.
+* Overlay settings enable click-through locking, moving, resizing and saved position/size.
+* Added reversible borderless game-window control for games configured as Windowed.
+
 * Installed Windows copies download updates from Redstoner875/Ravenswatcher and offer Restart to update.
 * Releases include a Windows installer, portable ZIP and update metadata. Automatic builds have unique beta versions.
 * Existing settings, run history and decoded assets survive installation and updates.

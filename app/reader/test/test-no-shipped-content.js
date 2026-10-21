@@ -35,6 +35,9 @@ function main() {
       assert.ok(web.includes('web/assets/fonts/' + name), 'offline font or license missing: ' + name);
     }
     assert.ok(fs.existsSync(path.join(stage, 'assets', 'build.js')), 'assets/build.js missing from stage');
+    for (const file of ['overlay.js', 'borderless.js', 'overlay-preload.js', 'web/overlay.html', 'web/overlay.js', 'web/overlay.css', 'web/overlay-settings.js']) {
+      assert.ok(fs.existsSync(path.join(stage, file)), `overlay runtime missing: ${file}`);
+    }
     for (const name of ['electron-updater', 'semver']) {
       const resolved = require.resolve(name, { paths: [stage] });
       assert.ok(resolved.startsWith(stage + path.sep), `runtime dependency missing from stage: ${name}`);

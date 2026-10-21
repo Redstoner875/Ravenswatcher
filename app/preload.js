@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld('ravenswatch', {
   // `latest` and `url` are null when nothing is newer, `ok` is false when
   // the check itself failed, and `reason` says why (null otherwise).
   onUpdate: subscribe(UPDATE_CHANNEL),
+  onOverlay: subscribe('readout:overlay-status'),
+  overlaySettings: input => ipcRenderer.invoke('readout:overlay-settings', input),
+  publishOverlay: payload => ipcRenderer.send('readout:overlay-map', payload),
   checkForUpdates: () => ipcRenderer.invoke('readout:update-check'),
   installUpdate: () => ipcRenderer.invoke('readout:update-install'),
 

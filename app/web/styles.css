@@ -1436,6 +1436,10 @@ body.view-history .curtain {
 .poi-map-controls label { display: flex; align-items: center; gap: 5px; }
 #poi-map-icon-size { width: 100px; }
 .poi-player { pointer-events: none; }
+.overlay-settings { margin: 16px 0; padding: 12px; border: 1px solid var(--neutral-500, #687784); }
+.overlay-settings legend { font-weight: bold; }
+.overlay-settings .settings-row { gap: 12px; flex-wrap: wrap; }
+.overlay-settings button { font: inherit; cursor: pointer; }
 @media (max-width: 850px) { .poi-map-workspace { grid-template-columns: minmax(0, 1fr); } .poi-map-filters { max-height: 210px; } }
 
 #poi-map-rotation { width: 150px; }
