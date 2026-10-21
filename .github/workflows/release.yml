@@ -56,6 +56,15 @@ jobs:
       - name: Build Windows x64 installer and ZIP
         run: npm run dist -- --win nsis zip --x64 --publish never
 
+      - name: Prepare updater metadata
+        env:
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+        run: |
+          test -s ../build/release/latest.yml
+          if [ "$PRERELEASE" = true ]; then
+            cp ../build/release/latest.yml ../build/release/beta.yml
+          fi
+
       - name: Keep build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -79,7 +88,10 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           shopt -s nullglob
-          files=(../build/release/*.zip ../build/release/*-Setup.exe ../build/release/*.blockmap ../build/release/latest.yml ../build/release/beta.yml)
+          files=(../build/release/*.zip ../build/release/*-Setup.exe ../build/release/*.blockmap)
+          for candidate in ../build/release/latest.yml ../build/release/beta.yml; do
+            if [ -f "$candidate" ]; then files+=("$candidate"); fi
+          done
           installers=(../build/release/*-Setup.exe)
           [ "${#installers[@]}" -gt 0 ] || { echo 'No Windows installer was built'; exit 1; }
           metadata=../build/release/latest.yml
