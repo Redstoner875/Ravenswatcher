@@ -57,11 +57,9 @@ The readout shows things the other players can't see. In a co-op run it asks you
 
 ## Antivirus
 
-The app reads the game's memory to do its job, which some antivirus products treat as suspicious. Its only network request is one check at launch for a newer release on GitHub. It writes only its own settings and a cache of icons and item text that it builds from your game install.
+The app reads the game's memory to do its job, which some antivirus products treat as suspicious. It checks this repository for updates at launch and every four hours, and downloads newer installers from GitHub. It stores its own settings, saved run history, downloaded updates and an asset cache built from your game install.
 
 ## Support
-
-If the tool is useful to you, there's a **Support on Ko-fi** button in the settings panel.
 
 Problems and requests go in [Issues](https://github.com/Redstoner875/Ravenswatcher/issues).
 

@@ -37,8 +37,8 @@ const { HISTORY_FILE, loadHistory, appendRun, deleteRuns, clearHistory, HistoryD
 // the running executable, which does not match the pin -- so a pinned icon
 // and the running window show up as two separate taskbar buttons. The
 // `appId` in package.json does not fix this: electron-builder writes that
-// into the NSIS installer's shortcuts, and this app ships as a folder with
-// no installer, so nothing ever applies it at runtime. Set it explicitly,
+// into the NSIS installer's shortcuts, but portable copies have no such
+// shortcut. Set it explicitly,
 // before any window exists, and keep the string equal to package.json's
 // `build.appId`. KEEP IN SYNC WITH app/package.json's appId.
 if (process.platform === 'win32') {
@@ -380,8 +380,7 @@ if (!gotLock) {
     createWindow().catch((err) => {
       console.error('[main] failed to create window:', err);
     });
-    // One check per launch. A failed check is one log line here and a blank
-    // note on the page, never an error.
+    // NSIS copies can replace themselves; portable copies offer installation.
     const installed = app.isPackaged && process.platform === 'win32'
       && fs.existsSync(path.join(path.dirname(app.getPath('exe')), 'Uninstall Ravenswatcher.exe'));
     if (installed) {

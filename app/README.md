@@ -23,11 +23,14 @@ The shell runs `reader/stdio.js` using Electron's own Node runtime with
 on a port. After building, `node app/reader/stdio.js` also runs the reader
 from the repository root.
 
-## Building the portable zip
+## Building Windows releases
 
 From `app/`, run `npm run dist`. It compiles TypeScript, generates an
 original lettermark icon, stages runtime files, and invokes electron-builder.
-Output is `build/release/` at the repository root: `win-unpacked/` and a zip.
+Output is `build/release/` at the repository root: `win-unpacked/`, an NSIS
+installer, a portable ZIP and updater metadata. Installed copies use
+electron-updater with this repository's release feed. ZIP copies show an
+installer link. Automatic release builds embed unique beta version numbers.
 Tests, probes, TypeScript sources, and source maps do not ship. The MIT
 license and third-party notices are included. Koffi's native binary is
 unpacked beside the asar because it cannot load from inside the archive.
