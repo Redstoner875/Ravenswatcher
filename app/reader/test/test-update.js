@@ -34,7 +34,7 @@ async function main() {
   const updater = new EventEmitter(), states = [], order = [];
   let resolveCheck, rejectDownload, checks = 0;
   updater.checkForUpdates = () => { checks++; updater.emit('checking-for-update'); return new Promise(r => { resolveCheck = r; }); };
-  updater.quitAndInstall = (silent, restart) => { assert.equal(silent, false); assert.equal(restart, true); order.push('install'); };
+  updater.quitAndInstall = (silent, restart) => { assert.equal(silent, true); assert.equal(restart, true); order.push('install'); };
   const control = createUpdateController({ updater, current: '0.1.7-beta.1',
     onState: s => states.push(s), beforeInstall: async () => { order.push('reader stopped'); } });
   assert.equal(updater.autoDownload, true);

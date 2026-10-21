@@ -68,7 +68,7 @@ function createUpdateController({ updater, current, onState, beforeInstall = asy
       publish({ status: 'installing' });
       try {
         await beforeInstall();
-        updater.quitAndInstall(false, true);
+        updater.quitAndInstall(true, true);
         return { ok: true };
       } catch (error) {
         installing = false;
