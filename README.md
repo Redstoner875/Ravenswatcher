@@ -59,6 +59,20 @@ If the tool is useful to you, there's a **Support on Ko-fi** button in the setti
 
 Problems and requests go in [Issues](https://github.com/Skigim/Ravenswatcher/issues).
 
+## Automatic Windows releases
+
+Every push to `main` runs the **Build and release Windows** GitHub Action.
+After type checking and tests pass, it builds the portable Windows x64 ZIP
+and uploads it to a development release, such as `v0.1.6-build.3`.
+Downloads are on this fork's [Releases page](https://github.com/Redstoner875/Ravenswatcher/releases).
+Fully extract the ZIP before running the EXE.
+
+For a normal versioned release, update `app/package.json` and its lockfile,
+then push a matching tag such as `v0.1.7`. Tags must match the package version.
+You can also build the selected branch from **Actions → Build and release
+Windows → Run workflow**. Rerunning a build replaces that build's ZIP.
+The workflow uses GitHub's built-in token; no additional secrets are required.
+
 ## Build from source
 
 On Windows, install Node.js 22.15 or newer (including Node 24/26) and Git:

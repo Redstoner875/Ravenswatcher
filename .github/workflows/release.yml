@@ -1,69 +1,87 @@
-# Manually build a pushed version tag and publish its Windows zip here.
-# Tags alone publish nothing. Version and dated changelog section must match.
-
-name: Release
+name: Build and release Windows
 
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to publish, e.g. v0.2.0. Must already be pushed."
-        required: true
-        type: string
-
-env:
-  TAG: ${{ inputs.tag }}
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app
+        shell: bash
     steps:
-      # Build the tagged commit, not whatever branch the run was started from.
       - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/${{ inputs.tag }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - run: npm ci
-
-      - run: npm test
-
-      - run: npm run dist
-
-      - name: Check the tag matches package.json
-        shell: bash
+      - name: Choose release tag
+        id: release
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          v=$(node -p "require('./package.json').version")
-          [ "v$v" = "${TAG}" ] || { echo "tag ${TAG} but package.json is $v"; exit 1; }
-
-      # The version's section of the changelog, so the notes are written once,
-      # in the repo, and reviewed before the push.
-      - name: Read the release notes from the changelog
-        shell: bash
-        run: |
-          v="${TAG#v}"
-          if grep -q "^## $v — unreleased" ../release/CHANGELOG.md; then
-            echo "release/CHANGELOG.md still lists $v as unreleased; date the heading"; exit 1
+          version=$(node -p "require('./package.json').version")
+          if [ "$REF_TYPE" = tag ]; then
+            [ "$REF_NAME" = "v$version" ] || { echo "Tag must match package.json: v$version"; exit 1; }
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "title=Ravenswatcher $version" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$version-build.$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "title=Ravenswatcher $version — build $RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
-          awk -v v="$v" '/^## /{ if (on) exit; on = ($2 == v); next } on' ../release/CHANGELOG.md > ../notes.md
-          grep -q '[^[:space:]]' ../notes.md || { echo "no section for $v in release/CHANGELOG.md"; exit 1; }
-          cat ../notes.md
 
-      - name: Publish the release
-        shell: bash
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build Windows x64 ZIP
+        run: npm run dist -- --win zip --x64 --publish never
+
+      - name: Keep build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ravenswatcher-Windows-x64-${{ steps.release.outputs.tag }}
+          path: build/release/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release and ZIP
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.release.outputs.title }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          gh release create "${TAG}" ../build/release/*.zip \
-            --repo "${{ github.repository }}" --verify-tag --title "${TAG}" --notes-file ../notes.md
+          shopt -s nullglob
+          files=(../build/release/*.zip)
+          [ "${#files[@]}" -gt 0 ] || { echo 'No Windows ZIP was built'; exit 1; }
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          else
+            flags=()
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" "${files[@]}" \
+              --target "$COMMIT_SHA" --title "$RELEASE_TITLE" \
+              --generate-notes "${flags[@]}"
+          fi
+          echo "### Windows download" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
