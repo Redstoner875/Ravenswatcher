@@ -33,8 +33,11 @@ async function main() {
   const box = /viewBox="([^"]+)"/.exec(scene.svg)[1].split(' ').map(Number);
   assert.ok(box[2] > 800 && box[3] > 800, 'rotated terrain must fit completely');
   await js(`PoiMap.updatePlayers({pid:101,map_id:0,players:[{id:'p1',hero:'Hero_Scarlet',position:{x:200,y:100,z:0}}]}); null`);
+  await js(`const heroSlider=document.getElementById('poi-map-hero-size'); heroSlider.value='96'; heroSlider.dispatchEvent(new Event('input')); null`);
+  assert.equal(await js(`document.querySelector('.poi-hero-art').getAttribute('transform')`), 'scale(2)');
   const layout = await js(`window.messages.filter(m=>m.kind==='players').at(-1)`);
   const positions = await js(`window.messages.filter(m=>m.kind==='positions').at(-1)`);
+  assert.ok(layout.svg.includes('scale(2)'));
   assert.ok(layout.svg.includes('data-player-id="p1"')); assert.equal(positions.points.length, 1);
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rw-overlay-ui-'));

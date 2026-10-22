@@ -118,6 +118,7 @@
   const bools = v => Object.fromEntries(Object.entries(v && typeof v === 'object' ? v : {}).filter(([, b]) => typeof b === 'boolean'));
   let prefs = { visibilityVersion: 3, groups: saved.visibilityVersion === 3 ? bools(saved.groups) : {}, types: saved.visibilityVersion === 3 ? bools(saved.types) : {},
     iconSizeVersion: 2, size: saved.iconSizeVersion === 2 ? Number(saved.size) || 75 : 75,
+    heroSize: Number.isFinite(saved.heroSize) ? Math.max(24, Math.min(150, saved.heroSize)) : 48,
     rotation: Number.isFinite(saved.rotation) ? Math.max(-180, Math.min(180, saved.rotation)) : saved.orientation === 'game' ? 45 : 0,
     flipY: typeof saved.flipY === 'boolean' ? saved.flipY : saved.orientation !== 'game',
     player: typeof saved.player === 'string' ? saved.player : '', showPlayers: saved.showPlayers !== false, follow: saved.follow === true,
@@ -170,7 +171,7 @@
     const points = projection.terrain ? [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: 1, y: 1 }].map(projection.projectUV)
       : projection.points.map(t => projection.project(t.position));
     if (points.length) {
-      const pad = Math.max(80, prefs.size / 2 + 10), xs = points.map(p => p.x), ys = points.map(p => p.y);
+      const pad = Math.max(80, prefs.size / 2 + 10, prefs.heroSize * 1.5), xs = points.map(p => p.x), ys = points.map(p => p.y);
       const x = Math.min(...xs) - pad, y = Math.min(...ys) - pad;
       copy.setAttribute('viewBox', [x, y, Math.max(...xs) - x + pad, Math.max(...ys) - y + pad].join(' '));
     } else copy.setAttribute('viewBox', '0 0 800 600');
@@ -452,17 +453,19 @@
         const label = `${selected ? 'You' : 'Player ' + (i + 1)} · ${name}`;
         const g = node('g', { class: 'poi-player', 'aria-label': `${label}: X ${p.position.x}, Y ${p.position.y}` });
         g.dataset.playerId = p.id;
+        const artwork = node('g', { class: 'poi-hero-art', transform: `scale(${prefs.heroSize / 48})` });
+        g.append(artwork);
         if (portrait) {
           // The pointer marks position, not facing direction (which is not read).
           const fallback = node('path', { d: 'M0 -17L12 0L0 17L-12 0Z', fill: color, stroke: '#10212d', 'stroke-width': 3, visibility: 'hidden' });
           const art = node('image', { href: 'asset://icons/' + portrait, x: -24, y: -57, width: 48, height: 48, preserveAspectRatio: 'xMidYMid meet' });
           const pointer = node('path', { d: 'M-10 -9L10 -9L0 8Z', fill: color, stroke: '#10212d', 'stroke-width': 2 });
           art.addEventListener('error', () => { failedPortraits.add(portrait); art.remove(); pointer.remove(); fallback.removeAttribute('visibility'); });
-          g.append(fallback, pointer, art);
+          artwork.append(fallback, pointer, art);
         } else {
-          g.append(node('path', { d: 'M0 -17L12 0L0 17L-12 0Z', fill: color, stroke: '#10212d', 'stroke-width': 3 }));
+          artwork.append(node('path', { d: 'M0 -17L12 0L0 17L-12 0Z', fill: color, stroke: '#10212d', 'stroke-width': 3 }));
         }
-        g.append(node('text', { x: 0, y: portrait ? -62 : -23, fill: selected ? '#fff' : color, 'font-size': 14, 'text-anchor': 'middle', stroke: '#10212d', 'stroke-width': 3, 'paint-order': 'stroke' }, selected ? 'YOU' : `P${i + 1}`));
+        artwork.append(node('text', { x: 0, y: portrait ? -62 : -23, fill: selected ? '#fff' : color, 'font-size': 14, 'text-anchor': 'middle', stroke: '#10212d', 'stroke-width': 3, 'paint-order': 'stroke' }, selected ? 'YOU' : `P${i + 1}`));
         g.append(node('title', {}, `${label} (${p.id})`));
         host.append(g); markerNodes.push({ n: g, p: pos, player: p.id });
       });
@@ -526,6 +529,8 @@
   get('poi-map-defaults').addEventListener('click', () => { prefs.groups = {}; prefs.types = {}; save(); updateFilterChecks(); paintPois(); });
   const sizeInput = get('poi-map-icon-size'); sizeInput.value = prefs.size; get('poi-map-icon-size-value').textContent = prefs.size;
   sizeInput.addEventListener('input', () => { prefs.size = Number(sizeInput.value); get('poi-map-icon-size-value').textContent = prefs.size; save(); paintPois(); });
+  const heroSizeInput = get('poi-map-hero-size'); heroSizeInput.value = prefs.heroSize; get('poi-map-hero-size-value').textContent = prefs.heroSize;
+  heroSizeInput.addEventListener('input', () => { prefs.heroSize = Number(heroSizeInput.value); get('poi-map-hero-size-value').textContent = prefs.heroSize; save(); paintPlayers(); publishOverlayScene(); });
   get('poi-map-player').addEventListener('change', e => { prefs.player = e.target.value; save(); updatePlayerSelect(); paintPlayers(); });
   for (const [id, k] of [['poi-map-show-players', 'showPlayers'], ['poi-map-follow', 'follow']]) {
     get(id).checked = prefs[k]; get(id).addEventListener('change', e => { prefs[k] = e.target.checked; save(); paintPlayers(); });

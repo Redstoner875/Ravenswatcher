@@ -2,6 +2,8 @@
 
 ## 0.1.7 — unreleased
 
+- Add a saved Hero size slider (24–150, default 48) for solo/co-op markers on the map and overlay.
+
 * Added a transparent full-map minimap overlay, synchronized with the main POI map even when the main window is minimized.
 * Overlay settings enable click-through locking, moving, resizing and saved position/size.
 * Added reversible borderless game-window control for games configured as Windowed.
