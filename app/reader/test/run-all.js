@@ -42,6 +42,7 @@ const SUITES = [
   ['test-update', () => require('./test-update').main()],
   ['test-runs', () => require('./test-runs').main()],
   ['test-talent-rarity-probe', () => require('./test-talent-rarity-probe').main()],
+  ['test-talent-rarity-edit', () => require('./test-talent-rarity-edit').main()],
   ['test-history', () => require('./test-history').main()],
   ['test-history-deletion', () => require('./test-history-deletion').main()],
 ];

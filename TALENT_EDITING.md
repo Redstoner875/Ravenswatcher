@@ -1,7 +1,49 @@
 # Talent rarity editing: discovery stage
 
 The first target is changing an existing talent's rarity during a run.
-The editor and game-memory writes are not implemented yet.
+There is now a source-only experimental write command for Thirst for Immortality.
+The installed app has no talent editor. Live gameplay effects after a direct
+write remain unverified.
+
+## Experimental Thirst for Immortality write
+
+The 2026-10-23 capture on executable SHA-256
+`b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904`
+identified the talent GUID `717e49d62fdb8d4bad49eb879056b1e4`.
+Two idle samples were identical. After the reported Common-to-Rare upgrade,
+the matching persistent entry's int32 at +0x50 changed from 0 to 1.
+The matching runtime window also changed at +0x1B0 and +0x1C8 from 1 to 4;
+neither word has been identified as rarity and neither is written.
+
+On that same game build, in an active solo Wukong run with this talent selected,
+run from `app/`:
+
+```powershell
+npm run edit:talents -- thirst epic
+npm run edit:talents -- thirst epic --apply
+```
+
+The first command previews. The second writes a four-byte persistent rarity
+code and checks it by reading it back. Supported names are `common`, `rare`,
+`epic`, and `legendary`. Changing it back uses the same command with the old
+rarity. No process address from the capture file is reused.
+
+The command verifies the executable hash, active solo session, hero, selected
+GUID, object classes, runtime ownership and current rarity. It resolves again
+immediately before the write, refusing changed targets. This is not an atomic
+transaction with the game; keep the game idle during the command. A separate
+short-lived write handle is opened only with `--apply`. App readers and their
+read-only tests remain unchanged. Bench tools do not ship in the installer.
+
+After applying, close and reopen the talent tooltip. Compare its rarity and
+numbers with the expected effect, then verify gameplay and chapter transitions.
+A successful command establishes only that the persistent field was written
+and read back. It does not prove effect recalculation or durability.
+If the tooltip or effect does not update, report that before further edits.
+
+The capture also exposed a talent-name lookup failure involving
+`Hero_Sun_Wukong`. This command matches GUIDs and actual hero identities and
+does not depend on that display-name lookup.
 
 `reader/runs.ts` identifies the selected talent GUIDs, skill definitions,
 owned skill controllers, localized names and descriptions. It reads rarity
