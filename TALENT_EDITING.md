@@ -8,13 +8,15 @@ POWER strikes, all other talents, chapters or saves have been verified.
 
 ## Windows test build
 
-Use the `talent-rarity-discovery` branch, not the main installer. Download its
-latest successful CI run's **talent-engine-helper** artifact. Extract
-`talent-call.exe` and `talent-hook.dll` together directly into:
+Download the latest successful CI run's **talent-rarity-test-build** artifact
+for the `talent-rarity-discovery` branch. Extract it into a new folder. It
+contains the source checkout plus the compiled helper in the correct place;
+open its `app/` directory in PowerShell. The main installer does not include
+the experimental editor.
 
-```
-app/reader/bench/native/bin/
-```
+For an existing up-to-date branch checkout, the smaller **talent-engine-helper**
+artifact contains just `talent-call.exe` and `talent-hook.dll`; extract both
+directly into `app/reader/bench/native/bin/`.
 
 Alternatively, build the helper from an **x64 Visual Studio developer command
 prompt** with `app\reader\bench\native\build.cmd`. Node alone cannot compile

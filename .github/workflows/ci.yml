@@ -43,3 +43,20 @@ jobs:
             app/reader/bench/native/bin/talent-call.exe
             app/reader/bench/native/bin/talent-hook.dll
           if-no-files-found: error
+
+      - name: Package complete experimental source build
+        shell: pwsh
+        run: |
+          git archive --format=zip --output=talent-source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive talent-source.zip talent-rarity-test-build
+          $nativeOutput = 'talent-rarity-test-build/app/reader/bench/native/bin'
+          New-Item -ItemType Directory -Force $nativeOutput | Out-Null
+          Copy-Item app/reader/bench/native/bin/talent-call.exe $nativeOutput
+          Copy-Item app/reader/bench/native/bin/talent-hook.dll $nativeOutput
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talent-rarity-test-build
+          path: talent-rarity-test-build/
+          if-no-files-found: error
+          retention-days: 14
