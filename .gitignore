@@ -13,6 +13,7 @@
 /app/web/item-icons.js
 /game-assets/
 *.dmp
+talent-rarity-capture*.jsonl
 # TypeScript build output, emitted beside its source (see app/tsconfig.json for
 # why there is no outDir). One entry per converted module: an unconverted
 # sibling .js is still real source and must stay tracked, so this cannot be

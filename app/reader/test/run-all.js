@@ -41,6 +41,7 @@ const SUITES = [
   ['test-coop', () => require('./test-coop').main()],
   ['test-update', () => require('./test-update').main()],
   ['test-runs', () => require('./test-runs').main()],
+  ['test-talent-rarity-probe', () => require('./test-talent-rarity-probe').main()],
   ['test-history', () => require('./test-history').main()],
   ['test-history-deletion', () => require('./test-history-deletion').main()],
 ];

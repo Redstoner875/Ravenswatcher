@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc && node scripts/build-icon.js",
     "typecheck": "tsc --noEmit",
+    "probe:talents": "npm run build && node reader/bench/talent-rarity-watch.js",
     "start": "npm run build && electron .",
     "test": "npm run build && node reader/test/run-all.js",
     "dist": "npm run build && node scripts/stage-dist.js && electron-builder --projectDir ../build/stage"
