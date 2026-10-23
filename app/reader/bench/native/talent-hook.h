@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <wchar.h>
 
 // Source-only experiment. Fixed operation; no arbitrary address-to-call API.
 constexpr DWORD kProtocol = 1;

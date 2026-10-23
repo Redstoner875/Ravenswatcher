@@ -39,8 +39,8 @@ function main() {
   const diagnosticBefore = Buffer.from(bytes);
   const diagnosis = live.diagnose(proc, classOf, target());
   assert.equal(diagnosis.read_only, true);
-  assert.equal(diagnosis.actual_count_class, '.?AVFixtureUnexpectedValue@@');
-  assert.equal(diagnosis.expected_count_class, live.VALUE_UNION_CLASS);
+  assert.equal(diagnosis.selector_signal_class, '.?AVFixtureUnexpectedValue@@');
+  assert.equal(diagnosis.selector_value_class, null);
   assert.equal(diagnosis.nodes.filter(n => n.offset.startsWith('case[')).length, 4,
     'targeted captures include every case even when the count class is unsupported');
   assert.ok(diagnosis.nodes.some(n => n.address === countPointer), 'untyped boxed payloads are included');

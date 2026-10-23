@@ -181,7 +181,7 @@ function main() {
       const output = require('path').resolve(`airbender-live-layout-${Date.now()}.json`);
       fs.writeFileSync(output, JSON.stringify({ ...diagnosis, exe_sha256: hash }, null, 2), { flag: 'wx' });
       console.log('Read-only report: ' + output);
-      console.log('Actual count class: ' + (diagnosis.actual_count_class ?? 'unresolved'));
+      console.log('Selector signal class: ' + (diagnosis.selector_signal_class ?? 'unresolved'));
       console.log('No game memory was written.');
     };
     if (args.includes('--inspect')) { report(); return; }

@@ -86,9 +86,9 @@ function diagnose(proc, classOf, target, moduleRange = null) {
       enqueue(Number(raw.readBigUInt64LE(offset)), request.depth + 1, request.address, '0x' + offset.toString(16));
     }
   }
-  return { version: 1, at: new Date().toISOString(), read_only: true,
-    layout, actual_count_class: safeClass(layout.selector + 0x88),
-    expected_count_class: VALUE_UNION_CLASS, nodes, errors, truncated };
+  return { version: 2, at: new Date().toISOString(), read_only: true,
+    layout, selector_signal_class: safeClass(layout.selector + 0x88),
+    selector_value_class: safeClass(layout.selector + 0xB0), nodes, errors, truncated };
 }
 
 module.exports = { AIRBENDER_GUID, SELECTOR_CLASS, VALUE_UNION_CLASS, selectorLayout, diagnose };
