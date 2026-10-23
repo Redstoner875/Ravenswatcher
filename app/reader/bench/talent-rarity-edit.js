@@ -105,6 +105,7 @@ function main() {
     console.log('npm run edit:talents -- list\n'
       + 'npm run edit:talents -- "Talent Name" <common|rare|epic|legendary> [--apply]\n'
       + 'npm run edit:talents -- Airbender legendary --live --apply\n'
+      + 'npm run edit:talents -- Airbender legendary --inspect (read-only layout report)\n'
       + 'Use a full GUID from list when a name is ambiguous. No arguments lists talents.\n'
       + 'Preview by default. --apply writes the selected talent\'s persistent rarity.\n'
       + 'Ultimate talents are listed but cannot be edited.\n'
@@ -115,7 +116,8 @@ function main() {
   }
   const listing = args.length === 0 || (args.length === 1 && args[0] === 'list');
   if (!listing && (!args[0]?.trim() || !Object.hasOwn(RARITIES, args[1])
-    || args.slice(2).some(a => a !== '--apply' && a !== '--live')
+    || args.slice(2).some(a => !['--apply', '--live', '--inspect'].includes(a))
+    || (args.includes('--inspect') && args.includes('--apply'))
     || new Set(args.slice(2)).size !== args.slice(2).length || args.length > 4)) throw new Error('Invalid arguments; use --help.');
   if (process.platform !== 'win32') throw new Error('Live editing requires Windows.');
   const fs = require('fs');
@@ -137,7 +139,15 @@ function main() {
     for (const name of [...Object.values(C), airbender.SELECTOR_CLASS, airbender.VALUE_UNION_CLASS]) {
       for (const rva of rtti.resolveAllVtableRvas(proc, mod.base, name + '\0')) byVtable.set(mod.base + rva, name);
     }
-    const classOf = at => byVtable.get(proc.readPtr(at)) ?? null;
+    // Resolve unexpected embedded classes too, so a refusal reports what is
+    // actually present instead of labelling every unlisted vtable unresolved.
+    const classCache = new Map(byVtable);
+    const classOf = at => {
+      const vt = proc.readPtr(at);
+      if (vt === null) return null;
+      if (!classCache.has(vt)) classCache.set(vt, rtti.classOfVtable(proc, mod.base, mod.size, vt));
+      return classCache.get(vt) ?? null;
+    };
     const wanted = new Set([C.controller, C.settings, C.runtime, C.record]);
     const targets = [...byVtable].filter(([, name]) => wanted.has(name)).map(([vt]) => vt);
     const hits = scanPointers(proc, targets, { writableOnly: true });
@@ -161,13 +171,35 @@ function main() {
       return;
     }
     const talent = chooseTalent(talents, args[0]);
+    const report = () => {
+      checkSession();
+      const held = locate(proc, classOf, found, talent.guid);
+      const diagnosis = airbender.diagnose(proc, classOf, held, mod);
+      const again = locate(proc, classOf, found, talent.guid);
+      if (JSON.stringify(again) !== JSON.stringify(held)) throw new Error('Talent changed during layout capture; report discarded.');
+      const output = require('path').resolve(`airbender-live-layout-${Date.now()}.json`);
+      fs.writeFileSync(output, JSON.stringify({ ...diagnosis, exe_sha256: hash }, null, 2), { flag: 'wx' });
+      console.log('Read-only report: ' + output);
+      console.log('Actual count class: ' + (diagnosis.actual_count_class ?? 'unresolved'));
+      console.log('No game memory was written.');
+    };
+    if (args.includes('--inspect')) { report(); return; }
     const live = args.includes('--live');
     const resolve = () => {
       checkSession();
       const held = locate(proc, classOf, found, talent.guid);
       return live ? airbender.inspect(proc, classOf, held) : held;
     };
-    const target = resolve();
+    let target;
+    try { target = resolve(); }
+    catch (e) {
+      // This is before a write handle is opened. Failures during apply keep
+      // their separate partial-state error and never say "nothing written".
+      if (live && talent.guid === airbender.AIRBENDER_GUID) {
+        try { report(); } catch (diagnosticError) { console.error('Layout report failed: ' + diagnosticError.message); }
+      }
+      throw e;
+    }
     const rarity = RARITIES[args[1]];
     console.log(live ? 'Airbender live-selector experiment. Verify POWER strikes after applying.'
       : 'Stored rarity experiment only. Airbender\'s active effect did not upgrade in live testing.');

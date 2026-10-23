@@ -9,6 +9,30 @@ did not establish actual stat application either.
 
 ## Airbender live-selector/count experiment
 
+**The first live test refused the count layout** with `Live count union class
+is unsupported`, before opening a write handle. Starting a new run is
+supported; the command resolves new addresses and does not reuse the log's
+addresses. The boxed-count class assumption is still unverified and its
+guard remains in place.
+
+For a targeted, read-only layout report:
+
+```powershell
+npm run edit:talents -- Airbender legendary --inspect
+```
+
+This writes `app/airbender-live-layout-<timestamp>.json`, with the actual
+embedded RTTI class names, four case records and up to two pointer hops into
+their boxed payloads. The report is limited to 256 nodes. Module pointers,
+hero entities/contexts/controllers and settings roots are excluded from
+the pointer walk. Unreadable nodes are reported, not treated as zero.
+Reports are ignored by Git. Unknown classes are resolved by inverse RTTI
+for diagnostics; they do not become accepted writer layouts. `--inspect`
+cannot be combined with `--apply` and never opens a write handle. A live
+preview refusal also attempts to save this report automatically, before
+any write access is opened. A failure after writes retains its partial-state
+error and does not claim that nothing was written.
+
 The uploaded normal-upgrade capture (before/idle/after/idle-after) confirms
 Airbender's persistent code changed 0 -> 1. The owned component named
 `Skill Power Extra Targets Count Selector`, class `oCEntityCpntValueSelector`,

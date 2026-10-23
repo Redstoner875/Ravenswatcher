@@ -82,6 +82,19 @@ function main() {
   assert.throws(resolve, /exactly one owned/);
   ptr(selector + 8, entity);
   assert.throws(() => live.inspect(proc, classOf, { ...target(), guid: 'aa'.repeat(16) }), /Airbender only/);
+  classes.set(selector + 0x88, '.?AVFixtureUnexpectedValue@@');
+  assert.throws(resolve, /unsupported: .*FixtureUnexpectedValue/, 'the actual class is included in refusals');
+  const diagnosticBefore = Buffer.from(bytes);
+  const diagnosis = live.diagnose(proc, classOf, target());
+  assert.equal(diagnosis.read_only, true);
+  assert.equal(diagnosis.actual_count_class, '.?AVFixtureUnexpectedValue@@');
+  assert.equal(diagnosis.expected_count_class, live.VALUE_UNION_CLASS);
+  assert.equal(diagnosis.nodes.filter(n => n.offset.startsWith('case[')).length, 4,
+    'targeted captures include every case even when the count class is unsupported');
+  assert.ok(diagnosis.nodes.some(n => n.address === countPointer), 'untyped boxed payloads are included');
+  assert.ok(diagnosis.nodes.find(n => n.address === selector).embedded.some(e => e.offset === '0x88'));
+  assert.deepEqual(bytes, diagnosticBefore, 'diagnosis never changes game bytes');
+  assert.throws(resolve, /unsupported/, 'diagnosis never bypasses the write guard');
   classes.delete(selector);
   assert.throws(resolve, /exactly one owned/);
   console.log('test-airbender-live: passed');
