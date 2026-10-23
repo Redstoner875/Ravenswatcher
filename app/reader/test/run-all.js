@@ -43,6 +43,7 @@ const SUITES = [
   ['test-runs', () => require('./test-runs').main()],
   ['test-talent-rarity-probe', () => require('./test-talent-rarity-probe').main()],
   ['test-talent-rarity-edit', () => require('./test-talent-rarity-edit').main()],
+  ['test-airbender-live', () => require('./test-airbender-live').main()],
   ['test-history', () => require('./test-history').main()],
   ['test-history-deletion', () => require('./test-history-deletion').main()],
 ];

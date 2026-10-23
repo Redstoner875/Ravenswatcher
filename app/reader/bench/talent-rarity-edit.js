@@ -4,6 +4,7 @@
 // Airbender testing confirmed the stored-only write does not upgrade its effect.
 const { RUN_CLASSES: C, RARITY, vectorAt, readTalentName } = require('../runs');
 const { capture } = require('./talent-rarity-watch');
+const airbender = require('./airbender-live');
 const GUID = '717e49d62fdb8d4bad49eb879056b1e4';
 const BUILD = 'b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904';
 const RARITIES = { common: 0, rare: 1, epic: 2, legendary: 3 };
@@ -103,16 +104,19 @@ function main() {
   if (args.includes('--help')) {
     console.log('npm run edit:talents -- list\n'
       + 'npm run edit:talents -- "Talent Name" <common|rare|epic|legendary> [--apply]\n'
+      + 'npm run edit:talents -- Airbender legendary --live --apply\n'
       + 'Use a full GUID from list when a name is ambiguous. No arguments lists talents.\n'
       + 'Preview by default. --apply writes the selected talent\'s persistent rarity.\n'
       + 'Ultimate talents are listed but cannot be edited.\n'
-      + 'Stored rarity only: Airbender testing did NOT upgrade its active effect.\n'
+      + 'Default writes stored rarity only and did NOT upgrade Airbender gameplay.\n'
+      + '--live also switches Airbender\'s measured effect selector; gameplay verification is pending.\n'
       + 'Requires the captured Windows game build and an active solo run.');
     return;
   }
   const listing = args.length === 0 || (args.length === 1 && args[0] === 'list');
   if (!listing && (!args[0]?.trim() || !Object.hasOwn(RARITIES, args[1])
-    || args.slice(2).some(a => a !== '--apply') || args.length > 3)) throw new Error('Invalid arguments; use --help.');
+    || args.slice(2).some(a => a !== '--apply' && a !== '--live')
+    || new Set(args.slice(2)).size !== args.slice(2).length || args.length > 4)) throw new Error('Invalid arguments; use --help.');
   if (process.platform !== 'win32') throw new Error('Live editing requires Windows.');
   const fs = require('fs');
   const crypto = require('crypto');
@@ -130,7 +134,7 @@ function main() {
   let closeWrite;
   try {
     const byVtable = new Map();
-    for (const name of Object.values(C)) {
+    for (const name of [...Object.values(C), airbender.SELECTOR_CLASS, airbender.VALUE_UNION_CLASS]) {
       for (const rva of rtti.resolveAllVtableRvas(proc, mod.base, name + '\0')) byVtable.set(mod.base + rva, name);
     }
     const classOf = at => byVtable.get(proc.readPtr(at)) ?? null;
@@ -157,13 +161,20 @@ function main() {
       return;
     }
     const talent = chooseTalent(talents, args[0]);
-    const resolve = () => { checkSession(); return locate(proc, classOf, found, talent.guid); };
+    const live = args.includes('--live');
+    const resolve = () => {
+      checkSession();
+      const held = locate(proc, classOf, found, talent.guid);
+      return live ? airbender.inspect(proc, classOf, held) : held;
+    };
     const target = resolve();
     const rarity = RARITIES[args[1]];
-    console.log('Stored rarity experiment only. Airbender\'s active effect did not upgrade in live testing.');
+    console.log(live ? 'Airbender live-selector experiment. Verify POWER strikes after applying.'
+      : 'Stored rarity experiment only. Airbender\'s active effect did not upgrade in live testing.');
     console.log(`${talent.name}: ${RARITY[target.current]} -> ${RARITY[rarity]}.`);
     if (!args.includes('--apply')) {
-      console.log('Preview only. Add --apply to test the persistent rarity change.');
+      if (live) console.log(`Live selector case: ${(target.selected - target.cases) / 0x38} -> ${3 - rarity}; cached count: ${target.count} -> ${rarity + 1} (Epic/Legendary mapping inferred).`);
+      console.log('Preview only. Add --apply to test the change.');
       return;
     }
     // Separate short-lived handle. Normal app readers retain their fixed read-only mask.
@@ -175,12 +186,14 @@ function main() {
       ['void *', 'size_t', 'void *', 'size_t', koffi.out(koffi.pointer('size_t'))]);
     writeHandle = open(0x0438, false, pid); // query + read + write + operation, no injection rights
     if (!writeHandle) throw new Error('Could not open the experimental write handle.');
-    const result = applyChange(resolve, (at, payload) => {
+    const apply = live ? airbender.apply : applyChange;
+    const result = apply(resolve, (at, payload) => {
       const written = [0];
       return writeMemory(writeHandle, at, payload, payload.length, written) ? written[0] : 0;
     }, target, rarity);
     console.log(JSON.stringify(result));
-    console.log('Stored rarity written and read back. This is not a verified gameplay upgrade.');
+    console.log(live ? 'Live selector and stored rarity read back. Test actual POWER strikes; gameplay is not yet verified.'
+      : 'Stored rarity written and read back. This is not a verified gameplay upgrade.');
   } finally {
     if (writeHandle && closeWrite) closeWrite(writeHandle);
     proc.close();

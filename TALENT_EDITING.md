@@ -7,6 +7,53 @@ one-extra-strike description. Treat the existing writer as a stored-data
 experiment, not a working rarity upgrade. Thirst's earlier tooltip change
 did not establish actual stat application either.
 
+## Airbender live-selector/count experiment
+
+The uploaded normal-upgrade capture (before/idle/after/idle-after) confirms
+Airbender's persistent code changed 0 -> 1. The owned component named
+`Skill Power Extra Targets Count Selector`, class `oCEntityCpntValueSelector`,
+changed only its +0x80 selected-case pointer: from vector base +0xA8 to
+base +0x70. The +0x70 vector header has four entries. The observed delta is
+0x38 bytes. The apparent change at the preceding Count Operand's +0x168 is
+this same physical word in an adjacent object, not a second field to write.
+Idle controls changed only an unrelated UI animation.
+
+This gives an experimental descending case mapping: Common case 3 and Rare
+case 2 are observed; Epic case 1 and Legendary case 0 are inferred. No normal
+Epic/Legendary upgrade is present in the log. The broad capture hit its
+2048-node limit and captured roots but not their linked cache payloads.
+
+On the measured game build with Airbender selected in a solo Wukong run:
+
+```powershell
+npm run edit:talents -- Airbender legendary --live
+npm run edit:talents -- Airbender legendary --live --apply
+```
+
+`--live` is Airbender-specific. It resolves the current hero and talent as
+usual, then verifies the unique owned selector by RTTI and exact settings
+name, four-entry table shape and an aligned in-table current selection.
+It also validates the embedded +0x88 `oCEntityValueUnion`, reads its +0x90
+boxed-int pointer using the reader's existing union convention, and requires
+a count between 1 and 4 that agrees with the observed case order. This count
+interpretation is a guarded hypothesis: its payload was not in the capture.
+If any check fails, the command refuses the experiment.
+
+Applying writes the persistent rarity, selected-case pointer and boxed count
+(rarity + 1, so the Legendary candidate is 4). It never edits the case table,
+changes unrelated talent controllers or writes the unexplained runtime flags
+at +0x1B0/+0x1C8. It revalidates object identity and live values between writes,
+allows the engine to converge to the requested count, and checks final
+readback. These writes are not atomic; a failed write/readback reports that
+partial changes may remain. No automatic rollback into uncertain memory is
+attempted. Ownership changes halt further writes.
+
+A successful result explicitly says `gameplay_verified: false`. Verify actual
+POWER strikes in-game and whether the state remains applied. Pointer/count
+readback alone is not evidence that the engine consumes this cache, nor that
+changes persist across a chapter. Other talents have no live-effect handler.
+The original command without `--live` remains a stored-only experiment.
+
 ## Find the live effect path
 
 The next capture must include the effect's live state, not just persistent
@@ -32,8 +79,8 @@ being measured. If a normal upgrade is not currently available, capture it
 when one is available; memory diffs alone cannot establish active effects.
 
 The actual fix must update the live effect or invoke its genuine upgrade/
-recalculation path, and be verified by the POWER's behavior. No such live
-field or callable upgrade path has been established from the existing log.
+recalculation path, and be verified by the POWER's behavior. The new live-selector/count experiment tests the candidate described above;
+no callable upgrade/recalculation path or gameplay fix is yet verified.
 
 The source-only editor lists the current hero's selected talents and changes
 one selected talent's rarity. It works by GUID on the measured game build,
