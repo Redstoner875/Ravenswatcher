@@ -1,5 +1,5 @@
 'use strict';
-// Compare a normal in-game upgrade before introducing writes. The persisted
+// Compare a normal in-game upgrade with stored-only edits. The persisted
 // +0x50 code is known from runs.readTalents; no runtime rarity offset is known.
 // Raw windows are exploratory bytes, not claims about field types or sizes.
 const { RUN_CLASSES: C, stringAt, vectorAt, readTalents } = require('../runs');
@@ -76,9 +76,73 @@ function capture(proc, classOf, found) {
   return { at: new Date().toISOString(), objects, records, errors };
 }
 
+// Effect caches may live in other hero components or linked value listeners,
+// rather than the skill controller itself. Explore two pointer hops, bounded
+// by RTTI, ownership, depth and a node budget; no discovered bytes are written.
+function captureEffects(proc, classOf, runtimes, limit = 2048) {
+  const objects = [], errors = [];
+  let truncated = false;
+  const owners = new Map(runtimes.filter(o => o.kind === 'runtime').map(o => [o.controller, o]));
+  for (const owner of owners.values()) {
+    const identity = { controller: owner.controller, entity: owner.entity, context: owner.context, hero: owner.hero };
+    try {
+      if (classOf(owner.controller) !== C.controller || ptr(proc, owner.controller + 8) !== owner.entity
+        || ptr(proc, owner.entity + 0x30) !== owner.context) throw new Error('stale effect owner');
+      const components = vectorAt(proc, owner.entity + 0x190, 10000);
+      const pending = [], seen = new Set();
+      const enqueue = (address, depth, parent, via) => {
+        if (seen.has(address)) return;
+        const cls = classOf(address);
+        if (!cls || cls === C.entity || /Settings@@$|ProfileData@@$/.test(cls)) return;
+        if (seen.size >= limit) { truncated = true; return; }
+        seen.add(address);
+        pending.push({ address, depth, parent, via, class_name: cls });
+      };
+      // Prioritize skills before other owned components if the budget is reached.
+      for (const rt of runtimes.filter(o => o.kind === 'runtime' && o.controller === owner.controller)) {
+        enqueue(rt.address, 0, owner.entity, 'skill');
+      }
+      for (let i = 0; i < components.count; i++) {
+        try {
+          const component = ptr(proc, components.ptr + i * 8);
+          if (ptr(proc, component + 8) === owner.entity) enqueue(component, 0, owner.entity, `component[${i}]`);
+        } catch { /* An empty or unreadable component slot is not a root. */ }
+      }
+      for (let i = 0; i < pending.length; i++) {
+        const node = pending[i];
+        try {
+          const raw = exact(proc, node.address, 0x200);
+          if (classOf(node.address) !== node.class_name) throw new Error('object class changed');
+          let key = null;
+          if (node.depth === 0) {
+            try { key = stringAt(proc, ptr(proc, node.address + 0x10) + 0xE8, 256); } catch { /* optional label */ }
+          }
+          objects.push({ kind: 'effect', ...identity, ...node, key, raw: raw.toString('hex') });
+          if (node.depth >= 2) continue;
+          for (let offset = 8; offset + 8 <= raw.length; offset += 8) {
+            const address = Number(raw.readBigUInt64LE(offset));
+            if (!Number.isSafeInteger(address) || address < 0x10000 || address > 0x7FFFFFFFFFFF
+              || address === owner.entity || address === owner.context || address === owner.controller) continue;
+            enqueue(address, node.depth + 1, node.address, '0x' + offset.toString(16));
+          }
+        } catch (e) { errors.push({ ...identity, address: node.address, message: e.message }); }
+      }
+      if (ptr(proc, owner.controller + 8) !== owner.entity || ptr(proc, owner.entity + 0x30) !== owner.context) {
+        throw new Error('effect owner changed during capture');
+      }
+    } catch (e) {
+      for (let i = objects.length - 1; i >= 0; i--) {
+        if (objects[i].controller === owner.controller) objects.splice(i, 1);
+      }
+      errors.push({ ...identity, message: e.message });
+    }
+  }
+  return { objects, errors, truncated };
+}
+
 function compare(before, after) {
   const identity = o => JSON.stringify([o.kind, o.address, o.controller, o.entity,
-    o.context, o.definition, o.record, o.hero, o.guid, o.key]);
+    o.context, o.definition, o.record, o.hero, o.guid, o.key, o.class_name]);
   const old = new Map(before.objects.map(o => [identity(o), o]));
   const changes = [];
   for (const current of after.objects) {
@@ -94,10 +158,11 @@ function compare(before, after) {
       words.push({ offset: '0x' + offset.toString(16),
         before: a.subarray(offset, offset + 4).toString('hex'),
         after: b.subarray(offset, offset + 4).toString('hex'),
-        before_i32: a.readInt32LE(offset), after_i32: b.readInt32LE(offset) });
+        before_i32: a.readInt32LE(offset), after_i32: b.readInt32LE(offset),
+        before_f32: a.readFloatLE(offset), after_f32: b.readFloatLE(offset) });
     }
     if (words.length) changes.push({ kind: current.kind, address: current.address,
-      hero: current.hero, guid: current.guid, key: current.key, state: 'changed', words });
+      hero: current.hero, guid: current.guid, key: current.key, class_name: current.class_name, state: 'changed', words });
   }
   for (const object of old.values()) changes.push({ ...object, state: 'removed' });
   return changes;
@@ -105,9 +170,10 @@ function compare(before, after) {
 
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('npm run probe:talents -- [output.jsonl]\n'
+    console.log('npm run probe:talents -- [output.jsonl] [--deep]\n'
       + 'Windows, running game, solo run. Enter captures; q exits.\n'
       + 'Capture twice while idle, upgrade one talent normally, then capture again.\n'
+      + '--deep includes owned hero components and RTTI-linked value objects.\n'
       + 'This records evidence only; it does not change talents.');
     return;
   }
@@ -120,7 +186,11 @@ async function main() {
   const rtti = require('../rtti');
   const { scanPointers } = require('../scan');
   const { PROCESS_NAME } = require('../state');
-  const output = path.resolve(process.argv[2] || 'talent-rarity-capture.jsonl');
+  const args = process.argv.slice(2);
+  const filenames = args.filter(arg => !arg.startsWith('--'));
+  if (filenames.length > 1 || args.some(arg => arg.startsWith('--') && arg !== '--deep')) throw new Error('Invalid arguments; use --help.');
+  const deep = args.includes('--deep');
+  const output = path.resolve(filenames[0] || 'talent-rarity-capture.jsonl');
   const pid = win32.findPid(PROCESS_NAME);
   const mod = win32.moduleBase(pid);
   const proc = win32.openProcess(pid);
@@ -129,7 +199,7 @@ async function main() {
   try {
     fd = fs.openSync(output, 'wx');
     const write = data => fs.writeSync(fd, JSON.stringify(data) + '\n');
-    write({ type: 'session', version: 1, pid, module_base: mod.base,
+    write({ type: 'session', version: 2, deep, pid, module_base: mod.base,
       module_size: mod.size, exe_sha256: crypto.createHash('sha256').update(fs.readFileSync(mod.exePath)).digest('hex'),
       note: 'Raw runtime windows include untyped bytes. Changes alone do not prove a rarity field.' });
     console.log('Resolving talent classes...');
@@ -140,7 +210,13 @@ async function main() {
     for (const name of [C.controller, C.settings, C.runtime, C.skill, C.record]) {
       if (![...byVtable.values()].includes(name)) throw new Error('Required class unavailable: ' + name);
     }
-    const classOf = address => byVtable.get(proc.readPtr(address)) ?? null;
+    const classCache = new Map(byVtable);
+    const classOf = address => {
+      const vt = proc.readPtr(address);
+      if (vt === null) return null;
+      if (!classCache.has(vt)) classCache.set(vt, rtti.classOfVtable(proc, mod.base, mod.size, vt));
+      return classCache.get(vt) ?? null;
+    };
     const wanted = new Set([C.controller, C.settings, C.runtime, C.record]);
     const targets = [...byVtable].filter(([, name]) => wanted.has(name)).map(([vt]) => vt);
     console.log('Solo run: capture twice while idle, upgrade ONE talent normally, capture again.');
@@ -155,6 +231,13 @@ async function main() {
       const addresses = name => [...byVtable].filter(([, n]) => n === name).flatMap(([vt]) => hits.get(vt) ?? []);
       const snapshot = capture(proc, classOf, { controllers: addresses(C.controller),
         settings: addresses(C.settings), runtimes: addresses(C.runtime), records: addresses(C.record) });
+      if (deep) {
+        const effects = captureEffects(proc, classOf, snapshot.objects);
+        snapshot.objects.push(...effects.objects);
+        snapshot.errors.push(...effects.errors);
+        snapshot.effects_truncated = effects.truncated;
+        console.log(`${effects.objects.length} effect objects; truncated=${effects.truncated}.`);
+      }
       const changes = previous ? compare(previous, snapshot) : null;
       write({ type: 'capture', label: label.trim(), snapshot, changes });
       const runtimeCount = snapshot.objects.filter(o => o.kind === 'runtime').length;
@@ -174,4 +257,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { console.error(e.message); process.exitCode = 1; });
-module.exports = { capture, compare };
+module.exports = { capture, compare, captureEffects };

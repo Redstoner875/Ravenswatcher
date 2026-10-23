@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert/strict');
-const { capture, compare } = require('../bench/talent-rarity-watch');
+const { capture, compare, captureEffects } = require('../bench/talent-rarity-watch');
 const { RUN_CLASSES: C } = require('../runs');
 
 function main() {
@@ -43,7 +43,8 @@ function main() {
   const after = capture(proc, classOf, found);
   const changes = compare(before, after);
   assert.deepEqual(changes[0].words, [{ offset: '0x100', before: '00000000',
-    after: '02000000', before_i32: 0, after_i32: 2 }]);
+    after: '02000000', before_i32: 0, after_i32: 2,
+    before_f32: 0, after_f32: 2.802596928649634e-45 }]);
   pointer(entity + 0x30, base + 0x6100);
   assert.deepEqual(compare(after, capture(proc, classOf, found)).map(c => c.state), ['added', 'removed'],
     'a new owner context is not an upgrade to the old object');
@@ -78,6 +79,38 @@ function main() {
   assert.equal(savedChange[0].words[0].offset, '0x50');
   assert.equal(savedChange[0].words[0].before_i32, 0);
   assert.equal(savedChange[0].words[0].after_i32, 1);
+  const effect = base + 0xB000, listener = base + 0xC000, leaf = base + 0xD000;
+  const foreign = base + 0xE000;
+  classes.set(effect, '.?AVFixturePowerController@@');
+  classes.set(listener, C.int); classes.set(leaf, '.?AVFixtureValueCache@@');
+  classes.set(foreign, '.?AVFixtureForeignController@@');
+  pointer(effect + 8, entity); pointer(effect + 0x80, listener);
+  pointer(listener + 0x20, leaf); pointer(leaf + 0x28, effect);
+  pointer(foreign + 8, base + 0xF000);
+  pointer(components + 8, effect); pointer(components + 16, foreign);
+  memory.writeInt32LE(3, entity - base + 0x198);
+  memory.writeInt32LE(3, entity - base + 0x19C);
+  const roots = capture(proc, classOf, found).objects;
+  const deepBefore = captureEffects(proc, classOf, roots);
+  assert.equal(deepBefore.errors.length, 0);
+  assert.deepEqual(deepBefore.objects.map(o => o.address), [runtime, effect, listener, leaf],
+    'owned components and two pointer hops are captured, cycles and foreign roots excluded');
+  memory.writeFloatLE(2.5, listener - base + 8);
+  const deepAfter = captureEffects(proc, classOf, roots);
+  const effectChange = compare(deepBefore, deepAfter);
+  assert.equal(effectChange.length, 1);
+  assert.equal(effectChange[0].address, listener);
+  assert.equal(effectChange[0].words[0].after_f32, 2.5, 'floating-point effect changes remain visible');
+  assert.equal(effectChange[0].class_name, C.int);
+  assert.equal(captureEffects(proc, classOf, roots, 1).truncated, true, 'node limits are explicit');
+  const unreadable = { read(at, size) { return at === listener ? null : proc.read(at, size); } };
+  const missing = captureEffects(unreadable, classOf, roots);
+  assert.ok(missing.errors.some(e => e.address === listener), 'unreadable linked objects reported');
+  assert.ok(!missing.objects.some(o => o.address === listener));
+  pointer(entity + 0x30, base + 0x6200);
+  const stale = captureEffects(proc, classOf, roots);
+  assert.equal(stale.objects.length, 0, 'stale owners never supply effect samples');
+  assert.ok(stale.errors.length > 0);
   console.log('test-talent-rarity-probe: passed');
   return 0;
 }

@@ -1,7 +1,7 @@
 'use strict';
 // Experimental source-only writer. The 2026-10-23 Thirst capture measured
 // persistent +0x50; a direct Rare-to-Epic write updated its tooltip and bonus.
-// Other talents and actual stat application still need live validation.
+// Airbender testing confirmed the stored-only write does not upgrade its effect.
 const { RUN_CLASSES: C, RARITY, vectorAt, readTalentName } = require('../runs');
 const { capture } = require('./talent-rarity-watch');
 const GUID = '717e49d62fdb8d4bad49eb879056b1e4';
@@ -106,7 +106,7 @@ function main() {
       + 'Use a full GUID from list when a name is ambiguous. No arguments lists talents.\n'
       + 'Preview by default. --apply writes the selected talent\'s persistent rarity.\n'
       + 'Ultimate talents are listed but cannot be edited.\n'
-      + 'Experimental: only Thirst rarity and tooltip updates are live verified.\n'
+      + 'Stored rarity only: Airbender testing did NOT upgrade its active effect.\n'
       + 'Requires the captured Windows game build and an active solo run.');
     return;
   }
@@ -160,6 +160,7 @@ function main() {
     const resolve = () => { checkSession(); return locate(proc, classOf, found, talent.guid); };
     const target = resolve();
     const rarity = RARITIES[args[1]];
+    console.log('Stored rarity experiment only. Airbender\'s active effect did not upgrade in live testing.');
     console.log(`${talent.name}: ${RARITY[target.current]} -> ${RARITY[rarity]}.`);
     if (!args.includes('--apply')) {
       console.log('Preview only. Add --apply to test the persistent rarity change.');
@@ -179,8 +180,7 @@ function main() {
       return writeMemory(writeHandle, at, payload, payload.length, written) ? written[0] : 0;
     }, target, rarity);
     console.log(JSON.stringify(result));
-    console.log('Persistent rarity verified. Reopen the talent tooltip and check its numbers and actual effect.');
-    console.log('This does not establish live effect recalculation or saving across chapter transitions.');
+    console.log('Stored rarity written and read back. This is not a verified gameplay upgrade.');
   } finally {
     if (writeHandle && closeWrite) closeWrite(writeHandle);
     proc.close();

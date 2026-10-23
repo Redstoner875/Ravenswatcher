@@ -1,5 +1,40 @@
 # Experimental talent rarity editor
 
+**Gameplay upgrade is not implemented.** Live Airbender testing changed
+Common (0) to Legendary (3) in persistent data and the tooltip's rarity label,
+but POWER still had its Common effect. The screenshot also retained the
+one-extra-strike description. Treat the existing writer as a stored-data
+experiment, not a working rarity upgrade. Thirst's earlier tooltip change
+did not establish actual stat application either.
+
+## Find the live effect path
+
+The next capture must include the effect's live state, not just persistent
+skill data. The probe's `--deep` mode records owned hero components and up to
+two pointer hops into RTTI-identified objects such as value listeners/caches.
+It is read-only and reports node limits and read errors. The 0x200-byte
+windows are exploratory, not established object sizes or write targets.
+
+For Airbender, first restore its stored rarity to Common so it matches the
+observed active effect:
+
+```powershell
+npm run edit:talents -- "Airbender" common --apply
+npm run probe:talents -- talent-rarity-capture-airbender.jsonl --deep
+```
+
+Type `before`, then `idle` without changing anything. Upgrade Airbender via
+the game's normal upgrade interface, then type `after-normal-upgrade`, then
+`idle-after`, and finish with `q`. Note the actual additional strikes before
+and after. The log allows comparison of a real upgrade's effect state with
+the failed stored-only write. Do not use the edit command for the upgrade
+being measured. If a normal upgrade is not currently available, capture it
+when one is available; memory diffs alone cannot establish active effects.
+
+The actual fix must update the live effect or invoke its genuine upgrade/
+recalculation path, and be verified by the POWER's behavior. No such live
+field or callable upgrade path has been established from the existing log.
+
 The source-only editor lists the current hero's selected talents and changes
 one selected talent's rarity. It works by GUID on the measured game build,
 without hardcoded hero or talent names. The installed app has no editor yet.
