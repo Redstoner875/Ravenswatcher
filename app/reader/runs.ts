@@ -282,6 +282,8 @@ export function readHeroStats(proc: ByteSource, held: HeroStatFields, classOf: C
 // --------------------------------------------------------------- talents --
 
 export interface Talent {
+  /** Memory-order GUID. Older saved histories may not contain it. */
+  guid?: string;
   /** Display name, in the game's language. */
   name: string;
   /** Internal skill name from the settings, for example Skill_Kintaro_Dash. */
@@ -351,6 +353,26 @@ export function retainTalentDescriptions(current: readonly Talent[], previous: r
   });
 }
 
+/** Names can be localized in settings or delegated to a runtime text listener. */
+export function readTalentName(proc: ByteSource, def: number, classOf: ClassOf, runtimes: readonly number[]): string {
+  if (classOf(def) !== RUN_CLASSES.settings || ptr(proc, def + 0x18) !== def) {
+    throw new Error('invalid talent definition');
+  }
+  const name = localizedName(proc, ptr(proc, def + 0x180 + 0x68), classOf);
+  if (name !== null) return name;
+  const names = new Set<string>();
+  for (const rt of runtimes) {
+    if (classOf(rt) !== RUN_CLASSES.runtime || ptr(proc, rt + 0x10) !== def) continue;
+    const listener = ptr(proc, rt + 0xA8);
+    if (!listener || classOf(listener) !== RUN_CLASSES.text) continue;
+    const text = stringAt(proc, listener + 8, 1024);
+    if (text) names.add(text);
+  }
+  const only = names.size === 1 ? [...names][0] : undefined;
+  if (only === undefined) throw new Error('talent name unavailable or ambiguous');
+  return only;
+}
+
 /**
  * The selected talents, in screen order.
  *
@@ -367,7 +389,12 @@ export function readTalents(
   runtimes: readonly number[],
 ): Talent[] {
   if (classOf(record) !== RUN_CLASSES.record) throw new Error('wrong run record class');
-  const owner = 'Hero_' + heroCode(stringAt(proc, record + RECORD.heroDefinition, 512));
+  // The Wukong capture has a Sun_Wukong definition path but a SunWukong
+  // hero identity. Accept that explicit alias, retaining duplicate detection.
+  const code = heroCode(stringAt(proc, record + RECORD.heroDefinition, 512));
+  const owner = 'Hero_' + code;
+  const owners = new Set([owner]);
+  if (code === 'Sun_Wukong') owners.add('Hero_SunWukong');
 
   const persistent = vectorAt(proc, record + RECORD.persistent, 512);
   const byGuid = new Map<string, number>();
@@ -397,7 +424,7 @@ export function readTalents(
     const list = definitions.get(guidAt(proc, addr + 0x88));
     if (!list) continue;
     const ownerSettings = ptr(proc, addr + 0x48);
-    if (!ownerSettings || stringAt(proc, ownerSettings + 8, 256) !== owner) continue;
+    if (!ownerSettings || !owners.has(stringAt(proc, ownerSettings + 8, 256))) continue;
     list.push(addr);
   }
 
@@ -408,23 +435,8 @@ export function readTalents(
     const def = candidates.length === 1 ? candidates[0] : undefined;
     if (def === undefined) throw new Error(`expected one ${owner} definition for ${guid}, got ${candidates.length}`);
 
-    // Settings +0x180 embeds the name picker; its payload pointer is at +0x68.
-    let name = localizedName(proc, ptr(proc, def + 0x180 + 0x68), classOf);
-    if (name === null) {
-      // Delegated: the runtime controller for these settings carries the name.
-      const names = new Set<string>();
-      for (const rt of runtimes) {
-        if (classOf(rt) !== RUN_CLASSES.runtime || ptr(proc, rt + 0x10) !== def) continue;
-        const listener = ptr(proc, rt + 0xA8);
-        if (!listener || classOf(listener) !== RUN_CLASSES.text) continue;
-        const text = stringAt(proc, listener + 8, 1024);
-        if (text) names.add(text);
-      }
-      const only = names.size === 1 ? [...names][0] : undefined;
-      if (only === undefined) throw new Error(`talent name unavailable or ambiguous for ${guid}`);
-      name = only;
-    }
-    return { name, key: stringAt(proc, def + 0xE8, 256), rarity: RARITY[rarityCode] ?? null, rarity_code: rarityCode,
+    const name = readTalentName(proc, def, classOf, runtimes);
+    return { guid, name, key: stringAt(proc, def + 0xE8, 256), rarity: RARITY[rarityCode] ?? null, rarity_code: rarityCode,
       description: talentDescription(proc, def, classOf, runtimes) };
   });
 }
