@@ -68,3 +68,8 @@ airbender-live-layout*.json
 /app/reader/players.js
 /app/reader/players.js.map
 /app/reader/players.d.ts
+
+/app/reader/bench/native/bin/
+/app/reader/bench/native/*.obj
+/app/reader/bench/native/*.lib
+/app/reader/bench/native/*.exp

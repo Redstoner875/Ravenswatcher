@@ -5,6 +5,7 @@
 const { RUN_CLASSES: C, RARITY, vectorAt, readTalentName } = require('../runs');
 const { capture } = require('./talent-rarity-watch');
 const airbender = require('./airbender-live');
+const engine = require('./talent-engine');
 const GUID = '717e49d62fdb8d4bad49eb879056b1e4';
 const BUILD = 'b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904';
 const RARITIES = { common: 0, rare: 1, epic: 2, legendary: 3 };
@@ -110,7 +111,7 @@ function main() {
       + 'Preview by default. --apply writes the selected talent\'s persistent rarity.\n'
       + 'Ultimate talents are listed but cannot be edited.\n'
       + 'Default writes stored rarity only and did NOT upgrade Airbender gameplay.\n'
-      + '--live also switches Airbender\'s measured effect selector; gameplay verification is pending.\n'
+      + '--live invokes the measured engine rarity setter on the window thread; gameplay testing is pending.\n'
       + 'Requires the captured Windows game build and an active solo run.');
     return;
   }
@@ -188,7 +189,7 @@ function main() {
     const resolve = () => {
       checkSession();
       const held = locate(proc, classOf, found, talent.guid);
-      return live ? airbender.inspect(proc, classOf, held) : held;
+      return live ? engine.inspect(proc, mod, held) : held;
     };
     let target;
     try { target = resolve(); }
@@ -201,12 +202,17 @@ function main() {
       throw e;
     }
     const rarity = RARITIES[args[1]];
-    console.log(live ? 'Airbender live-selector experiment. Verify POWER strikes after applying.'
+    console.log(live ? 'Engine rarity setter experiment. Verify actual effects after applying.'
       : 'Stored rarity experiment only. Airbender\'s active effect did not upgrade in live testing.');
     console.log(`${talent.name}: ${RARITY[target.current]} -> ${RARITY[rarity]}.`);
     if (!args.includes('--apply')) {
-      if (live) console.log(`Live selector case: ${(target.selected - target.cases) / 0x38} -> ${3 - rarity}; cached count: ${target.count} -> ${rarity + 1} (Epic/Legendary mapping inferred).`);
+      if (live) console.log('Will use the engine setter, including its normal effect notifications.');
       console.log('Preview only. Add --apply to test the change.');
+      return;
+    }
+    if (live) {
+      console.log(JSON.stringify(engine.apply(resolve, pid, mod, target, rarity)));
+      console.log('Engine setter completed. Test actual effects in-game; gameplay is not yet verified.');
       return;
     }
     // Separate short-lived handle. Normal app readers retain their fixed read-only mask.
@@ -218,7 +224,7 @@ function main() {
       ['void *', 'size_t', 'void *', 'size_t', koffi.out(koffi.pointer('size_t'))]);
     writeHandle = open(0x0438, false, pid); // query + read + write + operation, no injection rights
     if (!writeHandle) throw new Error('Could not open the experimental write handle.');
-    const apply = live ? airbender.apply : applyChange;
+    const apply = applyChange;
     const result = apply(resolve, (at, payload) => {
       const written = [0];
       return writeMemory(writeHandle, at, payload, payload.length, written) ? written[0] : 0;

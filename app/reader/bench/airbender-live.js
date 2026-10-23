@@ -1,4 +1,6 @@
 'use strict';
+// Read-only Airbender diagnostics. Executable analysis disproved the former
+// boxed-count writer. +0x88 is a value-union signal, not a numeric count.
 // 2026-10-23 normal Common -> Rare capture:
 // the named selector's +0x70 vector has four entries; +0x80 changed from
 // vector+0xA8 to vector+0x70 (one 0x38-byte entry backwards). Epic/Legendary
@@ -45,21 +47,6 @@ function selectorLayout(proc, classOf, target) {
     cases: entries.ptr, casesRaw: exact(proc, entries.ptr, 4 * STRIDE).toString('hex'), selected };
 }
 
-function inspect(proc, classOf, target) {
-  const layout = selectorLayout(proc, classOf, target);
-  const { selector, cases } = layout;
-  // Same boxed-int union decoding used by values.readUnionSlot. The capture
-  // contains the union but not the pointed-to count, so require its class and
-  // bounded integer shape at runtime before enabling this cache experiment.
-  const countClass = classOf(selector + 0x88);
-  if (countClass !== VALUE_UNION_CLASS) throw new Error(`Live count union class is unsupported: ${countClass ?? 'unresolved'}.`);
-  const countPointer = pointer(proc, selector + 0x90);
-  if (countPointer >= cases && countPointer < cases + 4 * STRIDE) throw new Error('Count aliases the selector case table.');
-  const count = exact(proc, countPointer, 4).readInt32LE();
-  if (count < 1 || count > 4) throw new Error(`Live count ${count} is not a supported Airbender strike count.`);
-  return { ...layout, countPointer, count };
-}
-
 // Targeted readout after a layout refusal. Include untyped boxed payloads and
 // the four case records, which the broad capture's root budget missed. This
 // function never relaxes the writer's class check and has no write callback.
@@ -104,51 +91,4 @@ function diagnose(proc, classOf, target, moduleRange = null) {
     expected_count_class: VALUE_UNION_CLASS, nodes, errors, truncated };
 }
 
-function apply(resolve, write, preview, rarity) {
-  if (!Number.isInteger(rarity) || rarity < 0 || rarity > 3) throw new Error('Unsupported target rarity.');
-  const fresh = resolve();
-  if (JSON.stringify(fresh) !== JSON.stringify(preview)) throw new Error('Live target changed since preview; nothing written.');
-  if (fresh.count !== 4 - (fresh.selected - fresh.cases) / STRIDE) {
-    throw new Error('Live count disagrees with the captured case order; nothing written.');
-  }
-  const desired = fresh.cases + (3 - rarity) * STRIDE;
-  const desiredCount = rarity + 1;
-  let attempted = false;
-  const identity = ({ current, selected, count, ...rest }) => JSON.stringify(rest);
-  const check = () => {
-    const now = resolve();
-    if (identity(now) !== identity(fresh)
-      || ![fresh.current, rarity].includes(now.current)
-      || ![fresh.selected, desired].includes(now.selected)
-      || ![fresh.count, desiredCount].includes(now.count)) throw new Error('Live target changed between writes.');
-    return now;
-  };
-  const step = (field, at, payload, value) => {
-    if (check()[field] === value) return;
-    attempted = true;
-    if (write(at, payload) !== payload.length) throw new Error('Write failed or was incomplete.');
-    if (check()[field] !== value) throw new Error('Live selector/stored rarity readback failed.');
-  };
-  try {
-    if (fresh.current !== rarity) {
-      const payload = Buffer.alloc(4); payload.writeInt32LE(rarity);
-      step('current', fresh.address, payload, rarity);
-    }
-    if (fresh.selected !== desired) {
-      const payload = Buffer.alloc(8); payload.writeBigUInt64LE(BigInt(desired));
-      step('selected', fresh.selector + 0x80, payload, desired);
-    }
-    const payload = Buffer.alloc(4); payload.writeInt32LE(desiredCount);
-    step('count', fresh.countPointer, payload, desiredCount);
-    const after = check();
-    if (after.current !== rarity || after.selected !== desired || after.count !== desiredCount) throw new Error('Final live state did not remain applied.');
-  } catch (e) {
-    throw new Error(e.message + (attempted
-      ? ' Partial changes may remain. Do not treat this as a successful upgrade.' : ' Nothing written.'));
-  }
-  return { changed: fresh.current !== rarity || fresh.selected !== desired,
-    previous: fresh.current, current: rarity, selected_case: 3 - rarity,
-    count: desiredCount, selector_readback_verified: true, gameplay_verified: false };
-}
-
-module.exports = { AIRBENDER_GUID, SELECTOR_CLASS, VALUE_UNION_CLASS, inspect, diagnose, apply };
+module.exports = { AIRBENDER_GUID, SELECTOR_CLASS, VALUE_UNION_CLASS, selectorLayout, diagnose };

@@ -20,3 +20,26 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  talent-helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build experimental source-only talent dispatcher
+        shell: cmd
+        run: app\reader\bench\native\build.cmd
+      - name: Test isolated native dispatcher
+        run: node app/reader/bench/native/test-dispatch.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talent-engine-helper
+          path: |
+            app/reader/bench/native/bin/talent-call.exe
+            app/reader/bench/native/bin/talent-hook.dll
+          if-no-files-found: error
