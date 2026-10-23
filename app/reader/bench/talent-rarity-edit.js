@@ -1,8 +1,8 @@
 'use strict';
-// Experimental source-only writer. Field evidence: the 2026-10-23 Wukong
-// Thirst for Immortality capture changed persistent +0x50 from 0 to 1.
-// Gameplay recalculation after a direct write is NOT yet established.
-const { RUN_CLASSES: C, vectorAt } = require('../runs');
+// Experimental source-only writer. The 2026-10-23 Thirst capture measured
+// persistent +0x50; a direct Rare-to-Epic write updated its tooltip and bonus.
+// Other talents and actual stat application still need live validation.
+const { RUN_CLASSES: C, RARITY, vectorAt, readTalentName } = require('../runs');
 const { capture } = require('./talent-rarity-watch');
 const GUID = '717e49d62fdb8d4bad49eb879056b1e4';
 const BUILD = 'b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904';
@@ -16,7 +16,7 @@ function pointer(proc, at) {
   return value;
 }
 
-function selected(proc, classOf, record, guid) {
+function chosenGuids(proc, classOf, record) {
   const entries = vectorAt(proc, record + 0x10, 512);
   const heroes = [];
   for (let i = 0; i < entries.count; i++) {
@@ -25,27 +25,62 @@ function selected(proc, classOf, record, guid) {
   }
   if (heroes.length !== 1) throw new Error('Selected talent owner unavailable or ambiguous.');
   const chosen = vectorAt(proc, heroes[0] + 0xE8, 128);
-  let matches = 0;
+  const guids = [];
   for (let i = 0; i < chosen.count; i++) {
     const bytes = proc.read(chosen.ptr + i * 16, 16);
     if (!bytes || bytes.length !== 16) throw new Error('Selected talents unreadable.');
-    if (bytes.toString('hex') === guid) matches++;
+    guids.push(bytes.toString('hex'));
   }
-  return matches === 1;
+  if (new Set(guids).size !== guids.length) throw new Error('Duplicate selected talent GUID.');
+  return guids;
 }
 
-function locate(proc, classOf, found) {
+function selected(proc, classOf, record, guid) {
+  return chosenGuids(proc, classOf, record).includes(guid);
+}
+
+function listTalents(proc, classOf, found) {
   const snapshot = capture(proc, classOf, found);
-  const runtimes = snapshot.objects.filter(o => o.kind === 'runtime' && o.guid === GUID);
-  const persistent = snapshot.objects.filter(o => o.kind === 'persistent' && o.guid === GUID);
-  if (runtimes.length !== 1 || persistent.length !== 1) throw new Error('Expected one live Thirst for Immortality and one persistent entry.');
-  const runtime = runtimes[0], entry = persistent[0];
-  if (runtime.hero !== entry.hero || !/^Hero_SunWukong_/.test(runtime.hero)) throw new Error('Hero identity mismatch.');
-  if (!selected(proc, classOf, entry.record, GUID)) throw new Error('Thirst for Immortality is not selected in this run.');
-  if (!Number.isInteger(entry.rarity_code) || entry.rarity_code < 0 || entry.rarity_code > 3) throw new Error('Unsupported current rarity.');
-  return { address: entry.address + 0x50, record: entry.record, runtime: runtime.address,
-    controller: runtime.controller, entity: runtime.entity, context: runtime.context,
-    definition: runtime.definition, hero: runtime.hero, current: entry.rarity_code, guid: GUID };
+  if (snapshot.records.length !== 1) throw new Error('Expected one current run record.');
+  const record = snapshot.records[0];
+  return chosenGuids(proc, classOf, record.record).map(guid => {
+    const runtimes = snapshot.objects.filter(o => o.kind === 'runtime' && o.guid === guid);
+    const persistent = snapshot.objects.filter(o => o.kind === 'persistent' && o.guid === guid);
+    if (runtimes.length !== 1 || persistent.length !== 1) {
+      throw new Error(`Expected one live talent and one persistent entry for ${guid}.`);
+    }
+    const runtime = runtimes[0], entry = persistent[0];
+    if (runtime.hero !== entry.hero || runtime.hero !== record.hero) throw new Error('Hero identity mismatch.');
+    let name = runtime.key, nameSource = 'internal';
+    try {
+      name = readTalentName(proc, runtime.definition, classOf, [runtime.address]);
+      nameSource = 'localized';
+    } catch { /* Keep GUID/internal-key access when localization is unavailable. */ }
+    const editable = Number.isInteger(entry.rarity_code) && entry.rarity_code >= 0 && entry.rarity_code <= 3;
+    return { address: entry.address + 0x50, record: entry.record, runtime: runtime.address,
+      controller: runtime.controller, entity: runtime.entity, context: runtime.context,
+      definition: runtime.definition, hero: runtime.hero, current: entry.rarity_code, guid,
+      name, nameSource, key: runtime.key, rarity: RARITY[entry.rarity_code] ?? 'Unknown', editable };
+  });
+}
+
+function chooseTalent(talents, selector) {
+  const query = selector.trim().toLowerCase();
+  const guid = query === 'thirst' ? GUID : query;
+  const byGuid = talents.filter(t => t.guid === guid);
+  const matches = byGuid.length ? byGuid : talents.filter(t => t.name.toLowerCase() === query || t.key.toLowerCase() === query);
+  if (matches.length !== 1) throw new Error('Talent unavailable or name ambiguous. Run list and use its full GUID.');
+  return matches[0];
+}
+
+function locate(proc, classOf, found, guid) {
+  const talent = listTalents(proc, classOf, found).find(t => t.guid === guid);
+  if (!talent) throw new Error('Talent is not selected in this run.');
+  if (!talent.editable) throw new Error('Ultimate and unknown rarity codes cannot be edited.');
+  // Display text can refresh independently of identity. Only ownership and the
+  // current code participate in the pre-write and post-write checks.
+  const { address, record, runtime, controller, entity, context, definition, hero, current } = talent;
+  return { address, record, runtime, controller, entity, context, definition, hero, current, guid };
 }
 
 function applyChange(resolve, write, target, rarity) {
@@ -65,15 +100,19 @@ function applyChange(resolve, write, target, rarity) {
 
 function main() {
   const args = process.argv.slice(2);
-  if (!args.length || args.includes('--help')) {
-    console.log('npm run edit:talents -- thirst <common|rare|epic|legendary> [--apply]\n'
-      + 'Preview by default. --apply writes only the selected talent\'s persistent rarity.\n'
-      + 'Experimental: actual gameplay effects and tooltip recalculation are unverified.\n'
-      + 'Requires the captured Windows game build and an active solo Wukong run.');
+  if (args.includes('--help')) {
+    console.log('npm run edit:talents -- list\n'
+      + 'npm run edit:talents -- "Talent Name" <common|rare|epic|legendary> [--apply]\n'
+      + 'Use a full GUID from list when a name is ambiguous. No arguments lists talents.\n'
+      + 'Preview by default. --apply writes the selected talent\'s persistent rarity.\n'
+      + 'Ultimate talents are listed but cannot be edited.\n'
+      + 'Experimental: only Thirst rarity and tooltip updates are live verified.\n'
+      + 'Requires the captured Windows game build and an active solo run.');
     return;
   }
-  if (args[0] !== 'thirst' || !Object.hasOwn(RARITIES, args[1])
-    || args.slice(2).some(a => a !== '--apply') || args.length > 3) throw new Error('Invalid arguments; use --help.');
+  const listing = args.length === 0 || (args.length === 1 && args[0] === 'list');
+  if (!listing && (!args[0]?.trim() || !Object.hasOwn(RARITIES, args[1])
+    || args.slice(2).some(a => a !== '--apply') || args.length > 3)) throw new Error('Invalid arguments; use --help.');
   if (process.platform !== 'win32') throw new Error('Live editing requires Windows.');
   const fs = require('fs');
   const crypto = require('crypto');
@@ -102,17 +141,26 @@ function main() {
     const found = { controllers: addresses(C.controller), settings: addresses(C.settings),
       runtimes: addresses(C.runtime), records: addresses(C.record) };
     const index = values.buildIndex(proc, mod.base);
-    const resolve = () => {
+    const checkSession = () => {
       if (!proc.isAlive()) throw new Error('Game exited.');
       const map = index?.resolve(CURRENT_MAP_ID), session = index?.resolve(GAME_SESSION_SIZE);
       if (map?.status !== 'ok' || map.value < 0 || session?.status !== 'ok' || session.value !== 1) {
         throw new Error('An active solo run could not be verified.');
       }
-      return locate(proc, classOf, found);
     };
+    checkSession();
+    const talents = listTalents(proc, classOf, found);
+    if (listing) {
+      console.table(talents.map(t => ({ Talent: t.name, Rarity: t.rarity, GUID: t.guid,
+        Editable: t.editable ? 'Yes' : 'No', Name: t.nameSource })));
+      if (!talents.length) console.log('No talents selected yet.');
+      return;
+    }
+    const talent = chooseTalent(talents, args[0]);
+    const resolve = () => { checkSession(); return locate(proc, classOf, found, talent.guid); };
     const target = resolve();
     const rarity = RARITIES[args[1]];
-    console.log(`Thirst for Immortality: ${target.current} -> ${rarity} (${args[1]}).`);
+    console.log(`${talent.name}: ${RARITY[target.current]} -> ${RARITY[rarity]}.`);
     if (!args.includes('--apply')) {
       console.log('Preview only. Add --apply to test the persistent rarity change.');
       return;
@@ -142,4 +190,4 @@ function main() {
 if (require.main === module) {
   try { main(); } catch (e) { console.error(e.message); process.exitCode = 1; }
 }
-module.exports = { locate, selected, applyChange };
+module.exports = { locate, selected, listTalents, chooseTalent, applyChange };

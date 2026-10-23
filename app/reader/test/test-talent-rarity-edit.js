@@ -1,10 +1,10 @@
 'use strict';
 const assert = require('assert/strict');
-const { locate, selected, applyChange } = require('../bench/talent-rarity-edit');
-const { RUN_CLASSES: C } = require('../runs');
+const { locate, selected, listTalents, chooseTalent, applyChange } = require('../bench/talent-rarity-edit');
+const { RUN_CLASSES: C, readTalents } = require('../runs');
 
 function main() {
-  const base = 0x10000, bytes = Buffer.alloc(0x10000);
+  const base = 0x10000, bytes = Buffer.alloc(0x30000);
   const controller = base, entity = base + 0x1000, runtime = base + 0x2000;
   const definition = base + 0x3000, settings = base + 0x4000, components = base + 0x5000;
   const record = base + 0x6000, entries = base + 0x7000, skill = base + 0x8000;
@@ -33,7 +33,41 @@ function main() {
   } };
   const classOf = at => classes.get(at) ?? null;
   const found = { controllers: [controller], records: [record], settings: [definition], runtimes: [runtime] };
-  const resolve = () => locate(proc, classOf, found);
+  const listener = base + 0xD000, owner = base + 0xE000;
+  classes.set(listener, C.text);
+  ptr(runtime + 0xA8, listener);
+  str(listener + 8, 'Thirst for Immortality', base + 0xC200);
+  ptr(definition + 0x48, owner);
+  str(owner + 8, 'Hero_SunWukong', base + 0xC300);
+  str(record + 0x70, 'Heroes\\Sun_Wukong_Update6.herodef.ot', base + 0xC400);
+  const resolve = () => locate(proc, classOf, found, guid);
+  assert.equal(readTalents(proc, record, classOf, found.settings, found.runtimes)[0].name, 'Thirst for Immortality',
+    'explicit Wukong alias resolves display names');
+  assert.equal(readTalents(proc, record, classOf, found.settings, found.runtimes)[0].guid, guid);
+  str(owner + 8, 'Hero_Sun_Wukong', base + 0xC300);
+  assert.equal(readTalents(proc, record, classOf, found.settings, found.runtimes)[0].name, 'Thirst for Immortality',
+    'the original exact owner spelling still works');
+  str(owner + 8, 'Hero_Unrelated', base + 0xC300);
+  assert.throws(() => readTalents(proc, record, classOf, found.settings, found.runtimes), /expected one Hero_Sun_Wukong definition/,
+    'the alias does not accept another hero');
+  str(owner + 8, 'Hero_SunWukong', base + 0xC300);
+  const duplicate = base + 0xF000;
+  proc.read(definition, 0x250).copy(bytes, duplicate - base);
+  ptr(duplicate + 0x18, duplicate);
+  classes.set(duplicate, C.settings);
+  assert.throws(() => readTalents(proc, record, classOf, [...found.settings, duplicate], found.runtimes), /got 2/,
+    'ambiguous definitions remain rejected');
+  const catalog = listTalents(proc, classOf, found);
+  assert.equal(catalog[0].name, 'Thirst for Immortality');
+  assert.equal(chooseTalent(catalog, 'thirst').guid, guid, 'legacy shortcut still works');
+  assert.equal(chooseTalent(catalog, 'THIRST FOR IMMORTALITY').guid, guid);
+  assert.equal(chooseTalent(catalog, guid).guid, guid);
+  assert.equal(chooseTalent(catalog, guid.toUpperCase()).guid, guid);
+  assert.throws(() => chooseTalent([...catalog, { ...catalog[0], guid: 'aa'.repeat(16) }], catalog[0].name), /ambiguous/);
+  assert.throws(() => chooseTalent(catalog, 'not selected'), /unavailable/);
+  ptr(runtime + 0xA8, 0);
+  assert.equal(listTalents(proc, classOf, found)[0].nameSource, 'internal', 'unavailable localization keeps GUID access');
+  ptr(runtime + 0xA8, listener);
   const target = resolve();
   assert.equal(target.current, 1);
   let writes = 0;
@@ -55,8 +89,35 @@ function main() {
   assert.throws(resolve, /not selected/);
   vec(hero + 0xE8, chosen, 2);
   Buffer.from(guid, 'hex').copy(bytes, chosen - base + 16);
-  assert.equal(selected(proc, classOf, record, guid), false, 'duplicate chosen GUIDs rejected');
+  assert.throws(() => selected(proc, classOf, record, guid), /Duplicate selected/, 'duplicate chosen GUIDs rejected');
   vec(hero + 0xE8, chosen, 1);
+  const secondGuid = 'ab'.repeat(16);
+  const runtime2 = base + 0x11000, definition2 = base + 0x12000, skill2 = base + 0x13000;
+  const listener2 = base + 0x14000;
+  classes.set(runtime2, C.runtime); classes.set(definition2, C.settings);
+  classes.set(skill2, C.skill); classes.set(listener2, C.text);
+  ptr(runtime2 + 8, entity); ptr(runtime2 + 0x10, definition2);
+  ptr(runtime2 + 0xA8, listener2); str(listener2 + 8, 'Fixture Ultimate', base + 0xC500);
+  ptr(definition2 + 0x18, definition2); ptr(definition2 + 0x48, owner);
+  str(definition2 + 0xE8, 'Skill Fixture Ultimate', base + 0xC600);
+  Buffer.from(secondGuid, 'hex').copy(bytes, definition2 - base + 0x88);
+  Buffer.from(secondGuid, 'hex').copy(bytes, skill2 - base + 0x20);
+  Buffer.from(secondGuid, 'hex').copy(bytes, chosen - base + 16);
+  vec(hero + 0xE8, chosen, 2); vec(entity + 0x190, components, 2); ptr(components + 8, runtime2);
+  vec(record + 0x10, entries, 3); ptr(entries + 16, skill2);
+  i32(skill2 + 0x50, 4);
+  found.settings.push(definition2); found.runtimes.push(runtime2);
+  const all = listTalents(proc, classOf, found);
+  assert.deepEqual(all.map(t => [t.name, t.editable]), [['Thirst for Immortality', true], ['Fixture Ultimate', false]]);
+  assert.throws(() => locate(proc, classOf, found, secondGuid), /Ultimate/);
+  i32(skill2 + 0x50, -1);
+  assert.throws(() => locate(proc, classOf, found, secondGuid), /unknown/);
+  i32(skill2 + 0x50, 1);
+  str(settings + 8, 'Hero_Fixture_Default', base + 0xC000);
+  const secondResolve = () => locate(proc, classOf, found, secondGuid);
+  assert.deepEqual(applyChange(secondResolve, write, secondResolve(), 3), { changed: true, previous: 1, current: 3 },
+    'a second GUID on another hero uses the same scoped edit path');
+  assert.equal(proc.read(skill + 0x50, 4).readInt32LE(), 2, 'editing another talent leaves the first intact');
   classes.delete(runtime);
   assert.throws(resolve, /Expected one live/);
   console.log('test-talent-rarity-edit: passed');

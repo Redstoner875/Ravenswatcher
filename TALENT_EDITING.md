@@ -1,55 +1,78 @@
-# Talent rarity editing: discovery stage
+# Experimental talent rarity editor
 
-The first target is changing an existing talent's rarity during a run.
-There is now a source-only experimental write command for Thirst for Immortality.
-The installed app has no talent editor. Live gameplay effects after a direct
-write remain unverified.
+The source-only editor lists the current hero's selected talents and changes
+one selected talent's rarity. It works by GUID on the measured game build,
+without hardcoded hero or talent names. The installed app has no editor yet.
 
-## Experimental Thirst for Immortality write
+## Use
 
-The 2026-10-23 capture on executable SHA-256
-`b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904`
-identified the talent GUID `717e49d62fdb8d4bad49eb879056b1e4`.
-Two idle samples were identical. After the reported Common-to-Rare upgrade,
-the matching persistent entry's int32 at +0x50 changed from 0 to 1.
-The matching runtime window also changed at +0x1B0 and +0x1C8 from 1 to 4;
-neither word has been identified as rarity and neither is written.
-
-On that same game build, in an active solo Wukong run with this talent selected,
-run from `app/`:
+Use a Windows source checkout with Node.js 22.15 or newer. Start an active
+solo run, then run from `app/`:
 
 ```powershell
-npm run edit:talents -- thirst epic
-npm run edit:talents -- thirst epic --apply
+npm ci
+npm run edit:talents -- list
 ```
 
-The first command previews. The second writes a four-byte persistent rarity
-code and checks it by reading it back. Supported names are `common`, `rare`,
-`epic`, and `legendary`. Changing it back uses the same command with the old
-rarity. No process address from the capture file is reused.
+The list shows talent names, rarities, GUIDs and whether each talent is editable.
+No arguments also lists talents. Display names come from the game's localized
+settings or runtime text listener. If a name is unavailable, its internal key
+is shown instead and the Name column says `internal`.
 
-The command verifies the executable hash, active solo session, hero, selected
-GUID, object classes, runtime ownership and current rarity. It resolves again
-immediately before the write, refusing changed targets. This is not an atomic
-transaction with the game; keep the game idle during the command. A separate
-short-lived write handle is opened only with `--apply`. App readers and their
-read-only tests remain unchanged. Bench tools do not ship in the installer.
+Copy a complete name from the list. Preview, then apply a change:
 
-After applying, close and reopen the talent tooltip. Compare its rarity and
-numbers with the expected effect, then verify gameplay and chapter transitions.
-A successful command establishes only that the persistent field was written
-and read back. It does not prove effect recalculation or durability.
-If the tooltip or effect does not update, report that before further edits.
+```powershell
+npm run edit:talents -- "Thirst for Immortality" legendary
+npm run edit:talents -- "Thirst for Immortality" legendary --apply
+```
 
-The capture also exposed a talent-name lookup failure involving
-`Hero_Sun_Wukong`. This command matches GUIDs and actual hero identities and
-does not depend on that display-name lookup.
+Use the full GUID instead when a name is ambiguous or unavailable:
 
-`reader/runs.ts` identifies the selected talent GUIDs, skill definitions,
-owned skill controllers, localized names and descriptions. It reads rarity
-as an int32 at persistent skill data +0x50. That is evidence for reading
-saved rarity, not evidence that writing it updates a live talent's effects.
-Runtime rarity, recalculation and persistence behavior still need measurement.
+```powershell
+npm run edit:talents -- 717e49d62fdb8d4bad49eb879056b1e4 legendary --apply
+```
+
+Supported target rarities are `common`, `rare`, `epic`, and `legendary`.
+Ultimate (code 4) and unknown rarity codes are listed but cannot be edited.
+Unselected talents cannot be added with this command. The old `thirst`
+shortcut remains supported. Names match exactly, ignoring case; partial
+name matching is intentionally unsupported.
+
+The command checks the executable hash, active solo session, selected GUID,
+object classes, runtime ownership, hero identity and current rarity. It
+resolves again immediately before the write and verifies readback. Keep the
+game idle during the command: this is not an atomic transaction with the game.
+The writer changes only four bytes at the selected persistent entry's +0x50.
+A separate short-lived write handle opens only with `--apply`. Normal app
+readers remain read-only. Both bench tools are excluded from installer builds.
+
+## Live evidence and limits
+
+The 2026-10-23 Wukong capture on executable SHA-256
+`b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904`
+identified Thirst for Immortality as GUID
+`717e49d62fdb8d4bad49eb879056b1e4`.
+Idle samples were identical; a reported normal Common-to-Rare upgrade changed
+persistent +0x50 from 0 to 1. A subsequent direct Rare-to-Epic write read back
+successfully and the user's screenshot showed Epic and a +150 Vitality
+completion bonus, previously Rare and +125 Vitality.
+
+This verifies Thirst's stored rarity and tooltip update. Actual stat
+application, other talents/heroes, chapter transitions and save persistence
+still require live tests. Other talent edits use the same measured persistent
+skill class and field but are experimental, not individually verified.
+After each edit, reopen the tooltip and compare its numbers and actual effect.
+Report failures before making further edits.
+
+Runtime words +0x1B0/+0x1C8 changed from 1 to 4 in the capture; neither is
+identified as rarity or written. Captured process addresses are never reused.
+The editor refuses a different executable hash until its layout is measured.
+
+The shared reader now exposes GUIDs and accepts the explicit Wukong owner
+alias `Hero_SunWukong` for the `Sun_Wukong` definition path, retaining exact
+ownership checks and duplicate rejection. The editor also resolves names
+directly from validated, owned runtime definitions rather than deriving them
+from a hero's filename.
 
 ## Capture a normal upgrade
 
@@ -83,14 +106,11 @@ Changed ownership, contexts or definitions appear as removed/added objects
 rather than upgrades. Saved records may lag gameplay; unavailable records
 and partial reads are reported explicitly.
 
-## Implementation after measurement
+## Before app integration
 
-Confirm candidate changes across repeat upgrades and idle controls. Verify
-the live field and the game's effect-recalculation mechanism, then implement
-a rarity-only operation identified by the current hero and talent GUID.
-The backend must resolve and revalidate ownership at apply time; the UI must
-not pass raw addresses. Verify actual gameplay effects, displayed rarity,
-chapter transitions and saved results before calling editing supported.
+Verify actual stat application, other talents and heroes, chapter transitions
+and saved results. Future UI requests must identify the talent by GUID and
+resolve/revalidate ownership in the backend, without accepting raw addresses.
 
 The current diagnostic is a source-development tool, excluded from packaged
 releases with the other `reader/bench` probes. It does not add a working editor
